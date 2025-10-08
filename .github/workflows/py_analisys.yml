@@ -18,4 +18,4 @@ jobs:
           pip install ruff==0.13.3
       - name: Analysing the code with ruff
         run: |
-          ruff check app
+          ruff check src
