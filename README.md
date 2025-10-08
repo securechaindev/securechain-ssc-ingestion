@@ -17,6 +17,23 @@ Built with Dagster for modern data orchestration, providing a clean asset-centri
 - **Docker** - Containerization platform
 - **PostgreSQL** - Dagster metadata storage
 
+### Before Start
+
+The first of all is to create a docker network for containers, with command:
+
+```bash
+docker network create securechain
+```
+
+Then, graphs and vulnerabilities information you need to download the zipped [data dumps](https://doi.org/10.5281/zenodo.17131401) from Zenodo. Once you have unzipped the dumps, inside the root folder run the command:
+
+```bash
+docker compose up -d
+```
+
+The containerized databases will also be seeded automatically.
+
+
 ## Quick Start
 
 Get up and running in 3 steps:
