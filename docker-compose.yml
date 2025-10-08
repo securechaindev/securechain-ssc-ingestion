@@ -1,0 +1,76 @@
+services:
+  dagster-postgres:
+    image: postgres:18
+    container_name: dagster-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dagster}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dagster}
+      POSTGRES_DB: ${POSTGRES_DB:-dagster}
+    volumes:
+      - dagster_postgres_data:/var/lib/postgresql/data
+    networks:
+      - securechain
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dagster}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  dagster-daemon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dagster-daemon
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DAGSTER_POSTGRES_USER: ${POSTGRES_USER:-dagster}
+      DAGSTER_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dagster}
+      DAGSTER_POSTGRES_DB: ${POSTGRES_DB:-dagster}
+      DAGSTER_POSTGRES_HOST: dagster-postgres
+      DAGSTER_POSTGRES_PORT: 5432
+    volumes:
+      - ./src:/opt/dagster/app/src
+      - ./dagster_home:/opt/dagster/dagster_home
+    networks:
+      - securechain
+    depends_on:
+      dagster-postgres:
+        condition: service_healthy
+    command: dagster-daemon run -m src.dagster_app
+
+  dagster-webserver:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dagster-webserver
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DAGSTER_POSTGRES_USER: ${POSTGRES_USER:-dagster}
+      DAGSTER_POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dagster}
+      DAGSTER_POSTGRES_DB: ${POSTGRES_DB:-dagster}
+      DAGSTER_POSTGRES_HOST: dagster-postgres
+      DAGSTER_POSTGRES_PORT: 5432
+    volumes:
+      - ./src:/opt/dagster/app/src
+      - ./dagster_home:/opt/dagster/dagster_home
+    ports:
+      - "3000:3000"
+    networks:
+      - securechain
+    depends_on:
+      dagster-postgres:
+        condition: service_healthy
+      dagster-daemon:
+        condition: service_started
+    command: dagster-webserver -h 0.0.0.0 -p 3000 -m src.dagster_app
+
+volumes:
+  dagster_postgres_data:
+
+networks:
+  securechain:
+    external: true
