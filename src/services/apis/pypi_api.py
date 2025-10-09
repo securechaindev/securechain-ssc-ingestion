@@ -3,6 +3,7 @@ from json import JSONDecodeError
 from typing import Any
 
 from aiohttp import ClientConnectorError, ContentTypeError
+from regex import findall
 
 from src.cache import CacheManager
 from src.session import SessionManager
@@ -17,9 +18,28 @@ class PyPIService:
     def __init__(self):
         self.cache: CacheManager = CacheManager(manager="pypi")
         self.BASE_URL = "https://pypi.python.org/pypi"
+        self.SIMPLE_URL = "https://pypi.org/simple"
         self.orderer = Orderer("PyPIPackage")
         self.repo_normalizer = RepoNormalizer()
         self.pypi_constraints_parser = PyPIConstraintsParser()
+
+    async def fetch_all_package_names(self) -> list[str]:
+        cached = await self.cache.get_cache("all_pypi_packages")
+        if cached:
+            return cached
+
+        url = f"{self.SIMPLE_URL}/"
+        session = await SessionManager.get_session()
+
+        try:
+            async with session.get(url) as resp:
+                html = await resp.text()
+                pattern = r'<a href="[^"]*">([^<]+)</a>'
+                package_names = findall(pattern, html)
+                await self.cache.set_cache("all_pypi_packages", package_names, ttl=3600)
+                return package_names
+        except (ClientConnectorError, TimeoutError, Exception) as _:
+            return []
 
     async def fetch_package_metadata(self, package_name: str) -> dict[str, Any] | None:
         cached = await self.cache.get_cache(package_name)

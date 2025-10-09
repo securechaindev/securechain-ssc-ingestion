@@ -34,7 +34,7 @@ class NuGetVersionUpdater:
             new_requirements = []
             actual_versions = await self.version_service.read_versions_names_by_package("NuGetPackage", package_name)
 
-            for index, (version, requirement) in enumerate(zip(versions, requirements)):
+            for index, (version, requirement) in enumerate(zip(versions, requirements, strict=False)):
                 if version.get("name") not in actual_versions:
                     new_attributed_versions.append(
                         await self.attributor.attribute_vulnerabilities(package_name, version)
@@ -57,7 +57,7 @@ class NuGetVersionUpdater:
                 moment=datetime.now(),
             )
 
-            for version, requirement in zip(created_versions, new_requirements):
+            for version, requirement in zip(created_versions, new_requirements, strict=False):
                 extractor = NuGetPackageExtractor(
                     package=package_schema,
                     package_service=self.package_service,

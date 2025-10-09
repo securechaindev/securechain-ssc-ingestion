@@ -5,13 +5,22 @@ from src.dagster_app.assets import (
     maven_packages,
     npm_packages,
     nuget_packages,
-    pypi_packages,
+    pypi_package_ingestion,
+    pypi_packages_updates,
     rubygems_packages,
+)
+
+pypi_ingestion_schedule = ScheduleDefinition(
+    name="pypi_weekly_ingestion",
+    target=pypi_package_ingestion,
+    cron_schedule="0 2 * * 0",
+    default_status=DefaultScheduleStatus.STOPPED,
+    description="Ingests new PyPI packages weekly on Sundays at 2:00 AM",
 )
 
 pypi_schedule = ScheduleDefinition(
     name="pypi_daily_update",
-    target=pypi_packages,
+    target=pypi_packages_updates,
     cron_schedule="0 10 * * *",
     default_status=DefaultScheduleStatus.RUNNING,
     description="Updates PyPI packages daily at 10:00 AM",
@@ -58,6 +67,7 @@ nuget_schedule = ScheduleDefinition(
 )
 
 all_schedules = [
+    pypi_ingestion_schedule,
     pypi_schedule,
     npm_schedule,
     maven_schedule,
