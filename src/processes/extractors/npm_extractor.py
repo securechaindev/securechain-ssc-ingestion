@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from src.schemas import NPMPackageSchema
 from src.services import NPMService, PackageService, VersionService
@@ -46,8 +46,6 @@ class NPMPackageExtractor(PackageExtractor):
                 package["parent_id"] = parent_id
                 package["parent_version_name"] = parent_version_name
                 package["constraints"] = constraints
-                if package.get("moment") < datetime.now() - timedelta(days=10):
-                    await self.search_new_versions(package)
                 known_packages.append(package)
             else:
                 await self.create_package(

@@ -154,7 +154,6 @@ def redis_queue_processor(
 
                     extractor_config = extractor_map[message.node_type]
 
-                    # Handle Maven special case: split package name into group_id and artifact_id
                     if message.node_type == "MavenPackage":
                         parts = message.package.split(":")
                         if len(parts) != 2:
@@ -164,7 +163,7 @@ def redis_queue_processor(
                             redis_queue.dead_letter(msg_id, raw_json, error_msg)
                             validation_errors += 1
                             continue
-                        
+
                         group_id, artifact_id = parts
                         package_schema = extractor_config["schema_class"](
                             group_id=group_id,
