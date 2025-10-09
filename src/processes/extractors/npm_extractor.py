@@ -1,5 +1,4 @@
 from datetime import datetime, timedelta
-from typing import Any
 
 from src.schemas import NPMPackageSchema
 from src.services import NPMService, PackageService, VersionService
@@ -94,5 +93,5 @@ class NPMPackageExtractor(PackageExtractor):
             parent_version_name,
         )
 
-        for created_version, requirement in zip(created_versions, requirements):
+        for created_version, requirement in zip(created_versions, requirements, strict=False):
             await self.generate_packages(requirement, created_version.get("id"), package_name)
