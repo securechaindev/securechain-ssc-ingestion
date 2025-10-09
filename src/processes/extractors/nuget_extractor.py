@@ -64,9 +64,9 @@ class NuGetPackageExtractor(PackageExtractor):
         parent_version_name: str | None = None,
     ) -> None:
         metadata = await self.nuget_service.fetch_package_metadata(package_name)
-        versions = await self.nuget_service.get_versions(metadata)
+        versions, requirements = await self.nuget_service.get_versions_and_requirements(metadata)
         repository_url = await self.nuget_service.get_repo_url(metadata)
-        vendor = await self.nuget_service.get_vendor(metadata)
+        vendor = repository_url.split("/")[-2] if repository_url else None
 
         if not versions:
             return
@@ -91,11 +91,5 @@ class NuGetPackageExtractor(PackageExtractor):
             parent_version_name,
         )
 
-        for created_version in created_versions:
-            await self.extract_packages(package_name, created_version)
-
-    async def extract_packages(self, parent_package_name: str, version: dict[str, Any]) -> None:
-        metadata = await self.nuget_service.fetch_package_version_metadata(parent_package_name, version.get("name"))
-        requirement = await self.nuget_service.get_package_requirements(metadata)
-        if requirement:
-            await self.generate_packages(requirement, version.get("id"), parent_package_name)
+        for created_version, requirement in zip(created_versions, requirements):
+            await self.generate_packages(requirement, created_version.get("id"), package_name)
