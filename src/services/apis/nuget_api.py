@@ -5,6 +5,7 @@ from typing import Any
 from aiohttp import ClientConnectorError, ContentTypeError
 
 from src.cache import CacheManager
+from src.logger import logger
 from src.session import SessionManager
 from src.utils import Orderer, RepoNormalizer
 
@@ -13,8 +14,63 @@ class NuGetService:
     def __init__(self):
         self.cache: CacheManager = CacheManager(manager="nuget")
         self.BASE_URL = "https://api.nuget.org/v3/registration5-gz-semver2"
+        self.SEARCH_URL = "https://azuresearch-usnc.nuget.org/query"
         self.orderer = Orderer("NuGetPackage")
         self.repo_normalizer = RepoNormalizer()
+
+    async def fetch_all_package_names(self) -> list[str]:
+        cached = await self.cache.get_cache("__all_packages__")
+        if cached:
+            return cached
+
+        session = await SessionManager.get_session()
+        all_package_names = []
+
+        try:
+            skip = 0
+            take = 1000
+
+            while True:
+                url = f"{self.SEARCH_URL}?skip={skip}&take={take}"
+
+                try:
+                    async with session.get(url, timeout=30) as resp:
+                        if resp.status != 200:
+                            break
+
+                        data = await resp.json()
+                        packages = data.get("data", [])
+
+                        if not packages:
+                            break
+
+                        for package in packages:
+                            package_id = package.get("id")
+                            if package_id:
+                                all_package_names.append(package_id)
+
+                        if skip % 10000 == 0 and skip > 0:
+                            logger.info(f"NuGet - Fetched {len(all_package_names)} packages so far (skip={skip})")
+
+                        total_hits = data.get("totalHits", 0)
+                        if skip + take >= total_hits:
+                            break
+
+                        skip += take
+                        await sleep(0.1)
+
+                except Exception as e:
+                    logger.warning(f"NuGet - Error fetching batch at skip={skip}: {e}")
+                    skip += take
+                    continue
+
+            logger.info(f"NuGet - Completed fetching {len(all_package_names)} packages")
+            await self.cache.set_cache("__all_packages__", all_package_names, ttl=3600)
+            return all_package_names
+
+        except Exception as e:
+            logger.error(f"NuGet - Fatal error in fetch_all_package_names: {e}")
+            return []
 
     async def fetch_page_versions(self, url: str) -> list[dict[str, Any]]:
         cached = await self.cache.get_cache(url)

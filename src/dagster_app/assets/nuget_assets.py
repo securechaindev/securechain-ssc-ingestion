@@ -10,7 +10,105 @@ from src.dagster_app.resources import (
     VersionServiceResource,
 )
 from src.logger import logger
+from src.processes.extractors import NuGetPackageExtractor
 from src.processes.updaters import NuGetVersionUpdater
+from src.schemas import NuGetPackageSchema
+
+
+@asset(
+    description="Ingests new NuGet packages from NuGet.org",
+    group_name="nuget",
+    compute_kind="python",
+)
+def nuget_package_ingestion(
+    context: AssetExecutionContext,
+    nuget_service: NuGetServiceResource,
+    package_service: PackageServiceResource,
+    version_service: VersionServiceResource,
+    attributor: AttributorResource,
+) -> Output[dict[str, Any]]:
+    try:
+        logger.info("Starting NuGet package ingestion process")
+
+        nuget_svc = nuget_service.get_service()
+        package_svc = package_service.get_service()
+        version_svc = version_service.get_service()
+        attr = attributor.get_attributor()
+
+        async def _run():
+            new_packages = 0
+            skipped_packages = 0
+            error_count = 0
+
+            all_package_names = await nuget_svc.fetch_all_package_names()
+            total_packages = len(all_package_names)
+
+            logger.info(f"NuGet - Found {total_packages} packages in NuGet.org")
+            context.log.info(f"NuGet - Found {total_packages} packages in NuGet.org")
+
+            for idx, package_name in enumerate(all_package_names, 1):
+                try:
+                    package_name_lower = package_name.lower()
+
+                    existing_package = await package_svc.read_package_by_name("NuGetPackage", package_name_lower)
+
+                    if existing_package:
+                        skipped_packages += 1
+                        if idx % 1000 == 0:
+                            context.log.info(f"NuGet - Progress: {idx}/{total_packages} (New: {new_packages}, Skipped: {skipped_packages})")
+                        continue
+
+                    package_schema = NuGetPackageSchema(name=package_name_lower)
+
+                    extractor = NuGetPackageExtractor(
+                        package=package_schema,
+                        package_service=package_svc,
+                        version_service=version_svc,
+                        nuget_service=nuget_svc,
+                        attributor=attr,
+                    )
+
+                    await extractor.run()
+                    new_packages += 1
+
+                    context.log.info(f"NuGet - Ingested new package: {package_name_lower} ({new_packages} new packages)")
+
+                    if idx % 100 == 0:
+                        context.log.info(f"NuGet - Progress: {idx}/{total_packages} (New: {new_packages}, Skipped: {skipped_packages})")
+
+                except Exception as e:
+                    error_count += 1
+                    logger.error(f"NuGet - Error ingesting {package_name}: {e}")
+                    context.log.error(f"NuGet - Error ingesting {package_name}: {e}")
+
+            logger.info(f"NuGet ingestion process completed. New packages: {new_packages}, Skipped: {skipped_packages}, Errors: {error_count}")
+
+            return {
+                "total_in_registry": total_packages,
+                "new_packages_ingested": new_packages,
+                "skipped_existing": skipped_packages,
+                "errors": error_count,
+            }
+
+        stats = run(_run())
+
+        return Output(
+            value=stats,
+            metadata={
+                "total_in_registry": stats["total_in_registry"],
+                "new_packages_ingested": stats["new_packages_ingested"],
+                "skipped_existing": stats["skipped_existing"],
+                "errors": stats["errors"],
+                "ingestion_rate": MetadataValue.float(
+                    (stats["new_packages_ingested"] / stats["total_in_registry"] * 100)
+                    if stats["total_in_registry"] > 0 else 0
+                ),
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"NuGet - Fatal error in ingestion process: {e}")
+        raise
 
 
 @asset(
@@ -18,7 +116,7 @@ from src.processes.updaters import NuGetVersionUpdater
     group_name="nuget",
     compute_kind="python",
 )
-def nuget_packages(
+def nuget_packages_updates(
     context: AssetExecutionContext,
     nuget_service: NuGetServiceResource,
     package_service: PackageServiceResource,

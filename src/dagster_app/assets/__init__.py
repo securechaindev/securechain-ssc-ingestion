@@ -1,4 +1,7 @@
-from src.dagster_app.assets.cargo_assets import cargo_packages
+from src.dagster_app.assets.cargo_assets import (
+    cargo_package_ingestion,
+    cargo_packages_updates,
+)
 from src.dagster_app.assets.maven_assets import (
     maven_package_ingestion,
     maven_packages_updates,
@@ -7,21 +10,30 @@ from src.dagster_app.assets.npm_assets import (
     npm_package_ingestion,
     npm_packages_updates,
 )
-from src.dagster_app.assets.nuget_assets import nuget_packages
+from src.dagster_app.assets.nuget_assets import (
+    nuget_package_ingestion,
+    nuget_packages_updates,
+)
 from src.dagster_app.assets.pypi_assets import (
     pypi_package_ingestion,
     pypi_packages_updates,
 )
-from src.dagster_app.assets.rubygems_assets import rubygems_packages
+from src.dagster_app.assets.rubygems_assets import (
+    rubygems_package_ingestion,
+    rubygems_packages_updates,
+)
 
 __all__ = [
-    "cargo_packages",
+    "cargo_package_ingestion",
+    "cargo_packages_updates",
     "maven_package_ingestion",
     "maven_packages_updates",
     "npm_package_ingestion",
     "npm_packages_updates",
-    "nuget_packages",
+    "nuget_package_ingestion",
+    "nuget_packages_updates",
     "pypi_package_ingestion",
     "pypi_packages_updates",
-    "rubygems_packages",
+    "rubygems_package_ingestion",
+    "rubygems_packages_updates",
 ]
