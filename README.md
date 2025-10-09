@@ -25,6 +25,7 @@ Built with **Dagster 1.11.13** for modern data orchestration, providing a clean 
 
 - **Dagster 1.11.13** - Modern data orchestrator with web UI
 - **Python 3.12** - Runtime environment
+- **UV** - Ultra-fast Python package manager (10-100x faster than pip)
 - **Neo4j** - Graph database for package relationships
 - **MongoDB** - Document database for vulnerability data
 - **Redis 7** - Message queue and stream processing for asynchronous package extraction
@@ -76,7 +77,7 @@ The containerized databases will be seeded automatically.
 
 ## Quick Start
 
-Get up and running in 3 steps:
+### Production (Docker) - 3 steps
 
 ```bash
 # 1. Configure environment
@@ -90,9 +91,24 @@ docker compose up -d
 # Open http://localhost:3000 in your browser
 ```
 
-The Dagster UI will be available at http://localhost:3000 where you can monitor asset materializations, view logs, and manage schedules.
+### Development (Local) - Using UV
+
+```bash
+# 1. Install UV (one-time setup)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 2. Install dependencies
+uv sync
+
+# 3. Run Dagster locally
+uv run dagster dev -m src.dagster_app
+```
+
+Open http://localhost:3000 to access the Dagster UI.
 
 **Services started**:
+- ✅ Neo4j (Graph database)
+- ✅ MongoDB (Vulnerability database)
 - ✅ PostgreSQL (Dagster metadata)
 - ✅ Redis (Message queue)
 - ✅ Dagster Daemon (Scheduler)
@@ -232,9 +248,46 @@ Each ecosystem has unique characteristics handled by specialized API clients:
 
 ## Useful Commands
 
-### Managing Services
+### Local Development (UV)
 
 ```bash
+# Install dependencies
+uv sync
+
+# Add new dependency
+uv add <package-name>
+
+# Add development dependency
+uv add --dev <package-name>
+
+# Remove dependency
+uv remove <package-name>
+
+# Run Dagster locally
+uv run dagster dev -m src.dagster_app
+
+# Run tests
+uv run pytest
+
+# Run linter
+uv run ruff check src/
+
+# Format code
+uv run ruff format src/
+
+# List installed packages
+uv pip list
+
+# Update dependencies
+uv sync --upgrade
+```
+
+### Docker Services
+
+```bash
+# Build and start services
+docker compose up -d --build
+
 # View all service status
 docker compose ps
 
@@ -397,8 +450,8 @@ securechain-ssc-ingestion/
 │   ├── cache.py           # Caching utilities (1hr TTL)
 │   └── settings.py        # Pydantic Settings (env vars)
 ├── docker-compose.yml     # 4 services (postgres, redis, daemon, webserver)
-├── Dockerfile             # Multi-stage build (builder + runtime)
-├── requirements.txt       # Python dependencies
+├── Dockerfile             # Multi-stage build with UV
+├── pyproject.toml         # Project configuration and dependencies
 ├── template.env           # Environment variable template
 ├── .env                   # Local configuration (gitignored)
 └── CLAUDE.md              # AI agent context documentation

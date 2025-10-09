@@ -1,0 +1,60 @@
+[project]
+name = "securechain-ssc-ingestion"
+version = "1.1.0"
+description = "SecureChain SSC Ingestion Service"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "dagster==1.11.13",
+    "dagster-webserver==1.11.13",
+    "dagster-postgres==0.27.13",
+    "redis==6.4.0",
+    "pydantic==2.11.9",
+    "pydantic-settings==2.10.1",
+    "neo4j==5.28.1",
+    "motor==3.7.1",
+    "python-dateutil==2.9.0",
+    "aiocache==0.12.3",
+    "aiohttp==3.12.14",
+    "univers==31.0.0",
+    "psycopg2-binary==2.9.10",
+    "asyncpg==0.30.0",
+    "regex==2025.9.18",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8.0",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.uv]
+dev-dependencies = []
+
+[tool.ruff.lint]
+select = [
+    "A",    # prevent using keywords that clobber python builtins
+    "B",    # bugbear: security warnings
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "C",    # flake8-comprehensions
+    "UP",   # pyupgrade
+    "RUF",  # the ruff developer's own rules
+]
+
+ignore = [
+    "E501",  # Supress line-too-long warnings: trust black's judgement on this one
+    "C901",  # Complex structure
+    "A004",  # Module attribute shadowing
+    "B008",  # Function calls in argument defaults
+]

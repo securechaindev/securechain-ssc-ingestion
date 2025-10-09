@@ -1,0 +1,63 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Virtual environments
+.venv
+venv
+env
+ENV
+.env
+
+# Python cache
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache
+.ruff_cache
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Documentation and non-essential files
+*.md
+!README.md
+CLAUDE.md
+UV_GUIDE.md
+.cursorignore
+.cursorindexingignore
+
+# Development files
+setup-dev.sh
+Makefile
+
+# Dagster local data (not needed in container)
+dagster_home/storage/
+dagster_home/logs/
+dagster_home/history/
+dagster_home/.logs_queue/
+dagster_home/.nux/
+dagster_home/.telemetry/
+
+# Docker files (not needed inside image)
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+# Tests
+tests/
+test_*.py
+*_test.py
+
+# UV lock file (using requirements.txt in Docker for now)
+uv.lock
+
+# Other
+.DS_Store
+*.log

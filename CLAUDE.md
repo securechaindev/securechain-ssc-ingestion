@@ -31,6 +31,7 @@
               ↓
 ┌─────────────────────────────────────────────────────┐
 │  Application Layer (Python 3.12)                    │
+│  ├── Package Manager: UV (10-100x faster than pip) │
 │  ├── Assets (6 package updaters)                   │
 │  ├── Resources (API clients, DB connections)       │
 │  ├── Processes (Extractors, Updaters)              │
@@ -79,6 +80,56 @@
 
 ```
 securechain-ssc-ingestion/
+├── src/                          # Source code
+│   ├── dagster_app/              # Dagster application entry point
+│   │   ├── __init__.py           # Definitions (main entry, exports `defs`)
+│   │   ├── schedules.py          # 13 schedules (6 ingestion + 6 updates + 1 queue)
+│   │   ├── assets/               # Asset definitions (one per ecosystem)
+│   │   │   ├── __init__.py       # Exports all assets
+│   │   │   ├── pypi_assets.py
+│   │   │   ├── npm_assets.py
+│   │   │   ├── maven_assets.py
+│   │   │   ├── cargo_assets.py
+│   │   │   ├── rubygems_assets.py
+│   │   │   ├── nuget_assets.py
+│   │   │   └── redis_queue_assets.py
+│   │   └── resources/            # ConfigurableResource definitions
+│   │       └── __init__.py       # 10 resources (APIs, DB services, attributor)
+│   ├── processes/                # Business logic (reusable, Dagster-agnostic)
+│   │   ├── extractors/           # Package extractors
+│   │   └── updaters/             # Version updaters
+│   ├── services/                 # External service clients
+│   │   ├── apis/                 # Registry API clients (PyPI, NPM, etc.)
+│   │   ├── dbs/                  # Database services
+│   │   ├── graph/                # Neo4j service
+│   │   └── vulnerability/        # MongoDB service
+│   ├── schemas/                  # Pydantic data models
+│   ├── utils/                    # Helper functions
+│   ├── logger.py                 # Custom logging
+│   ├── session.py                # HTTP session management
+│   ├── cache.py                  # Caching utilities
+│   └── settings.py               # Configuration loader
+├── dagster_home/                 # Dagster configuration
+│   ├── dagster.yaml              # Storage, launcher, coordinator config
+│   ├── workspace.yaml            # Module loading config
+│   ├── storage/                  # Run data (gitignored)
+│   ├── logs/                     # Compute logs (gitignored)
+│   └── .telemetry/               # Telemetry data (gitignored)
+├── docker-compose.yml            # Service orchestration (4 services)
+├── Dockerfile                    # Multi-stage build with UV (builder + runtime)
+├── pyproject.toml                # Project config (dependencies, tools, metadata)
+├── uv.lock                       # Lockfile for reproducible installs (auto-generated)
+├── .env                          # Environment variables (gitignored)
+├── template.env                  # Environment template
+├── .gitignore                    # Git ignore rules
+├── .dockerignore                 # Docker build optimization
+├── README.md                     # User documentation
+└── CLAUDE.md                     # This file (AI agent context)
+
+EXTERNAL (not in repo, must exist):
+├── Neo4j                         # Graph database (securechain network)
+└── MongoDB                       # Vulnerability database (securechain network)
+```
 ├── src/
 │   ├── dagster_app/              # Dagster application entry point
 │   │   ├── __init__.py           # Definitions (main entry, exports `defs`)
@@ -553,7 +604,23 @@ PYTHONPATH=/opt/dagster/app
 
 ## Common Operations
 
-### Starting Services
+### Development Setup (Local)
+
+**Using UV (10-100x faster than pip)**:
+```bash
+# Install UV
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install dependencies
+uv sync
+
+# Run Dagster locally
+uv run dagster dev -m src.dagster_app
+```
+
+### Production Deployment (Docker)
+
+**Starting Services**
 ```bash
 docker compose up -d
 ```
@@ -585,6 +652,27 @@ docker compose down -v       # Remove data
 ```
 
 ## Development Guidelines
+
+### Development Tools
+
+**UV Package Manager**:
+- 🚀 **10-100x faster** than pip for installations
+- 💾 **Intelligent caching** - reuses downloaded packages
+- 🔒 **Better dependency resolution** - handles conflicts more gracefully
+- 🐳 **Docker integration** - Dockerfile uses UV for faster builds
+- 📦 **Native pyproject.toml** - no requirements.txt needed
+- 🔐 **Lock file** - uv.lock ensures reproducible installs
+
+**Quick Commands**:
+```bash
+uv sync                       # Install dependencies
+uv add <package>             # Add dependency
+uv remove <package>          # Remove dependency
+uv run <command>             # Run command in environment
+uv run dagster dev -m src.dagster_app  # Run Dagster
+uv run pytest                # Run tests
+uv run ruff check src/       # Run linter
+```
 
 ### When Modifying Code
 
@@ -692,11 +780,14 @@ ports:
 
 1. **Module Path**: Always use `-m src.dagster_app` when running Dagster commands
 2. **Network**: `securechain` network is external (must exist before docker compose up)
-3. **Dockerfile**: Multi-stage build (builder + runtime) for smaller image
+3. **Dockerfile**: Multi-stage build (builder + runtime) with UV for faster dependency installation
 4. **Git**: `.env` is gitignored, use `template.env` as reference
-5. **Dagster Version**: Currently 1.11.13 (check requirements.txt)
-6. **Python Version**: 3.12 (specified in Dockerfile)
+5. **Dagster Version**: Currently 1.11.13 (check pyproject.toml)
+6. **Python Version**: 3.12 (specified in Dockerfile and pyproject.toml)
 7. **Volumes**: `/src` and `/dagster_home` are mounted for hot-reload during development
+8. **Package Manager**: UV is the only package manager - no pip or requirements.txt
+9. **Project Config**: `pyproject.toml` is the single source of truth for dependencies
+10. **Lock File**: `uv.lock` ensures reproducible installations (auto-generated, commit to git)
 
 ## Migration History
 
@@ -710,11 +801,17 @@ All business logic from Airflow DAGs was preserved and refactored into Dagster a
 
 To test the setup:
 ```bash
+# Local development with UV
+uv run python -c "from src.dagster_app import defs; print('OK')"
+uv run dagster asset list -m src.dagster_app
+uv run dagster schedule list -m src.dagster_app
+
+# Docker (production)
 # 1. Verify Python imports work
 docker compose exec dagster-webserver \
   python -c "from src.dagster_app import defs; print('OK')"
 
-# 2. List assets
+# 2. List assets (should show 13)
 docker compose exec dagster-webserver \
   dagster asset list -m src.dagster_app
 
@@ -729,10 +826,19 @@ docker compose exec dagster-webserver \
 - **Dagster Assets**: https://docs.dagster.io/concepts/assets
 - **Dagster Resources**: https://docs.dagster.io/concepts/resources
 - **Dagster Schedules**: https://docs.dagster.io/concepts/automation/schedules
+- **UV Package Manager**: https://github.com/astral-sh/uv
+- **Ruff Linter**: https://github.com/astral-sh/ruff
 
 ---
 
 **Last Updated**: October 9, 2025  
 **Dagster Version**: 1.11.13  
 **Python Version**: 3.12  
-**New Features**: Package ingestion assets for PyPI, NPM, and Maven with optimized deduplication and caching
+**Package Manager**: UV (native, no pip/requirements.txt)  
+**Recent Features**: 
+- UV package manager as sole dependency manager
+- pyproject.toml as single source of truth
+- uv.lock for reproducible installs
+- Simplified development workflow (no scripts needed)
+- Package ingestion assets for PyPI, NPM, and Maven with optimized deduplication and caching
+- Redis queue processor for asynchronous package extraction

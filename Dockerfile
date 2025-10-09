@@ -2,26 +2,31 @@ FROM python:3.12-slim AS builder
 
 WORKDIR /opt/dagster/app
 
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+COPY pyproject.toml .
+
+RUN uv sync --frozen --no-dev --no-cache
 
 FROM python:3.12-slim
 
 WORKDIR /opt/dagster/app
 
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
 RUN apt-get update && apt-get install -y \
     libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /root/.local /root/.local
+COPY --from=builder /opt/dagster/app/.venv /opt/dagster/app/.venv
 
-ENV PATH=/root/.local/bin:$PATH
+ENV PATH=/opt/dagster/app/.venv/bin:$PATH
 
 RUN mkdir -p /opt/dagster/dagster_home
 
