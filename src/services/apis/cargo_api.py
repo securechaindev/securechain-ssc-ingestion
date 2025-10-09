@@ -5,6 +5,7 @@ from typing import Any
 from aiohttp import ClientConnectorError, ContentTypeError
 
 from src.cache import CacheManager
+from src.logger import logger
 from src.session import SessionManager
 from src.utils import Orderer, RepoNormalizer
 
@@ -15,6 +16,61 @@ class CargoService:
         self.BASE_URL = "https://crates.io/api/v1/crates"
         self.orderer = Orderer("CargoService")
         self.repo_normalizer = RepoNormalizer()
+
+    async def fetch_all_package_names(self) -> list[str]:
+        cached = await self.cache.get_cache("__all_packages__")
+        if cached:
+            return cached
+
+        session = await SessionManager.get_session()
+        all_package_names = []
+
+        try:
+            page = 1
+            per_page = 100
+
+            while True:
+                url = f"{self.BASE_URL}?page={page}&per_page={per_page}"
+
+                try:
+                    async with session.get(url, timeout=30) as resp:
+                        if resp.status != 200:
+                            break
+
+                        data = await resp.json()
+                        crates = data.get("crates", [])
+
+                        if not crates:
+                            break
+
+                        for crate in crates:
+                            crate_name = crate.get("name")
+                            if crate_name:
+                                all_package_names.append(crate_name)
+
+                        if page % 1000 == 0:
+                            logger.info(f"Cargo - Fetched {len(all_package_names)} crates so far (page={page})")
+
+                        meta = data.get("meta", {})
+                        total = meta.get("total", 0)
+                        if len(all_package_names) >= total:
+                            break
+
+                        page += 1
+                        await sleep(0.1)
+
+                except Exception as e:
+                    logger.warning(f"Cargo - Error fetching page {page}: {e}")
+                    page += 1
+                    continue
+
+            logger.info(f"Cargo - Completed fetching {len(all_package_names)} crates")
+            await self.cache.set_cache("__all_packages__", all_package_names, ttl=3600)
+            return all_package_names
+
+        except Exception as e:
+            logger.error(f"Cargo - Fatal error in fetch_all_package_names: {e}")
+            return []
 
     async def fetch_package_metadata(self, package_name: str) -> dict[str, Any] | None:
         cached = await self.cache.get_cache(package_name)

@@ -10,7 +10,105 @@ from src.dagster_app.resources import (
     VersionServiceResource,
 )
 from src.logger import logger
+from src.processes.extractors import CargoPackageExtractor
 from src.processes.updaters import CargoVersionUpdater
+from src.schemas import CargoPackageSchema
+
+
+@asset(
+    description="Ingests new Cargo crates from crates.io",
+    group_name="cargo",
+    compute_kind="python",
+)
+def cargo_package_ingestion(
+    context: AssetExecutionContext,
+    cargo_service: CargoServiceResource,
+    package_service: PackageServiceResource,
+    version_service: VersionServiceResource,
+    attributor: AttributorResource,
+) -> Output[dict[str, Any]]:
+    try:
+        logger.info("Starting Cargo package ingestion process")
+
+        cargo_svc = cargo_service.get_service()
+        package_svc = package_service.get_service()
+        version_svc = version_service.get_service()
+        attr = attributor.get_attributor()
+
+        async def _run():
+            new_packages = 0
+            skipped_packages = 0
+            error_count = 0
+
+            all_package_names = await cargo_svc.fetch_all_package_names()
+            total_packages = len(all_package_names)
+
+            logger.info(f"Cargo - Found {total_packages} crates in crates.io")
+            context.log.info(f"Cargo - Found {total_packages} crates in crates.io")
+
+            for idx, package_name in enumerate(all_package_names, 1):
+                try:
+                    package_name_lower = package_name.lower()
+
+                    existing_package = await package_svc.read_package_by_name("CargoPackage", package_name_lower)
+
+                    if existing_package:
+                        skipped_packages += 1
+                        if idx % 1000 == 0:
+                            context.log.info(f"Cargo - Progress: {idx}/{total_packages} (New: {new_packages}, Skipped: {skipped_packages})")
+                        continue
+
+                    package_schema = CargoPackageSchema(name=package_name_lower)
+
+                    extractor = CargoPackageExtractor(
+                        package=package_schema,
+                        package_service=package_svc,
+                        version_service=version_svc,
+                        cargo_service=cargo_svc,
+                        attributor=attr,
+                    )
+
+                    await extractor.run()
+                    new_packages += 1
+
+                    context.log.info(f"Cargo - Ingested new crate: {package_name_lower} ({new_packages} new crates)")
+
+                    if idx % 100 == 0:
+                        context.log.info(f"Cargo - Progress: {idx}/{total_packages} (New: {new_packages}, Skipped: {skipped_packages})")
+
+                except Exception as e:
+                    error_count += 1
+                    logger.error(f"Cargo - Error ingesting {package_name}: {e}")
+                    context.log.error(f"Cargo - Error ingesting {package_name}: {e}")
+
+            logger.info(f"Cargo ingestion process completed. New crates: {new_packages}, Skipped: {skipped_packages}, Errors: {error_count}")
+
+            return {
+                "total_in_registry": total_packages,
+                "new_packages_ingested": new_packages,
+                "skipped_existing": skipped_packages,
+                "errors": error_count,
+            }
+
+        stats = run(_run())
+
+        return Output(
+            value=stats,
+            metadata={
+                "total_in_registry": stats["total_in_registry"],
+                "new_packages_ingested": stats["new_packages_ingested"],
+                "skipped_existing": stats["skipped_existing"],
+                "errors": stats["errors"],
+                "ingestion_rate": MetadataValue.float(
+                    (stats["new_packages_ingested"] / stats["total_in_registry"] * 100)
+                    if stats["total_in_registry"] > 0 else 0
+                ),
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Cargo - Fatal error in ingestion process: {e}")
+        raise
 
 
 @asset(
@@ -18,7 +116,7 @@ from src.processes.updaters import CargoVersionUpdater
     group_name="cargo",
     compute_kind="python",
 )
-def cargo_packages(
+def cargo_packages_updates(
     context: AssetExecutionContext,
     cargo_service: CargoServiceResource,
     package_service: PackageServiceResource,
