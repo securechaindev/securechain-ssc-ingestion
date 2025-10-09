@@ -27,9 +27,36 @@ Built with **Dagster 1.11.13** for modern data orchestration, providing a clean 
 - **Python 3.12** - Runtime environment
 - **Neo4j** - Graph database for package relationships
 - **MongoDB** - Document database for vulnerability data
-- **Redis** - Queue management for package extraction
-- **PostgreSQL** - Dagster metadata storage
+- **Redis 7** - Message queue and stream processing for asynchronous package extraction
+- **PostgreSQL 18** - Dagster metadata storage
 - **Docker** - Containerization platform
+
+## Docker Services
+
+This project runs **4 containerized services**:
+
+1. **dagster-postgres** (postgres:18)
+   - Stores Dagster metadata (runs, events, schedules)
+   - Port: 5432 (internal)
+   - Volume: `dagster_postgres_data`
+
+2. **redis** (redis:7-alpine)
+   - Message queue for asynchronous package extraction
+   - Port: 6379 (exposed)
+   - Volume: `redis_data`
+   - Persistence: AOF (Append Only File) enabled
+
+3. **dagster-daemon**
+   - Processes schedules and sensors
+   - Depends on: postgres, redis
+   - No exposed ports
+
+4. **dagster-webserver**
+   - Web UI for monitoring and management
+   - Port: 3000 (exposed)
+   - Depends on: postgres, redis, daemon
+
+**External Network**: `securechain` (must exist, connects to Neo4j/MongoDB)
 
 ## Before Start
 
@@ -56,7 +83,7 @@ Get up and running in 3 steps:
 cp template.env .env
 nano .env  # Update passwords and connection strings
 
-# 2. Start services
+# 2. Start all services (Dagster + Redis)
 docker compose up -d
 
 # 3. Access Dagster UI
@@ -64,6 +91,12 @@ docker compose up -d
 ```
 
 The Dagster UI will be available at http://localhost:3000 where you can monitor asset materializations, view logs, and manage schedules.
+
+**Services started**:
+- ✅ PostgreSQL (Dagster metadata)
+- ✅ Redis (Message queue)
+- ✅ Dagster Daemon (Scheduler)
+- ✅ Dagster Webserver (UI)
 
 ## Available Assets
 
@@ -91,9 +124,30 @@ Daily incremental updates for existing packages in the graph. These run automati
 | `pypi_packages_updates` | Python | Daily 10:00 AM | Updates Python packages from PyPI |
 | `npm_packages_updates` | Node.js | Daily 12:00 PM | Updates JavaScript packages from NPM |
 | `maven_packages_updates` | Java | Daily 2:00 PM | Updates Java packages from Maven Central |
-| `cargo_packages` | Rust | Daily 4:00 PM | Updates Rust crates from crates.io |
-| `rubygems_packages` | Ruby | Daily 6:00 PM | Updates Ruby gems from RubyGems |
-| `nuget_packages` | .NET | Daily 8:00 PM | Updates .NET packages from NuGet |
+| `cargo_packages_updates` | Rust | Daily 4:00 PM | Updates Rust crates from crates.io |
+| `rubygems_packages_updates` | Ruby | Daily 6:00 PM | Updates Ruby gems from RubyGems |
+| `nuget_packages_updates` | .NET | Daily 8:00 PM | Updates .NET packages from NuGet |
+
+### Redis Queue Processor (Every 5 minutes - RUNNING by default)
+
+Asynchronous package processing by consuming extraction messages from Redis queue.
+
+| Asset | Purpose | Schedule | Description |
+|-------|---------|----------|-------------|
+| `redis_queue_processor` | Queue Processing | Every 5 min | Reads package extraction messages from Redis and routes to appropriate extractors |
+
+**How it works**:
+1. Reads messages from Redis stream (`package_extraction`) in batches of 100
+2. Validates each message using `PackageMessageSchema`
+3. Routes to the correct extractor based on `node_type` (PyPIPackage, NPMPackage, etc.)
+4. Acknowledges successful processing or moves failed messages to dead-letter queue
+5. Reports metrics: processed, successful, failed, validation errors, unsupported types
+
+**Use cases**:
+- **Dependency Discovery**: Queue dependencies during package analysis
+- **On-Demand Ingestion**: External systems request package extraction via Redis
+- **Retry Mechanism**: Re-queue failed extractions
+- **Load Distribution**: Multiple consumers process in parallel
 
 All schedules can be enabled/disabled individually from the Dagster UI (`Automation` tab).
 
@@ -108,23 +162,62 @@ All schedules can be enabled/disabled individually from the Dagster UI (`Automat
          │ HTTP API
          ↓
 ┌─────────────────┐
-│  Dagster Asset  │  (Fetch all packages / Batch read existing)
+│  Dagster Asset  │  (Ingestion / Update)
 └────────┬────────┘
          │
-         ├─→ Ingestion: Check if exists in Neo4j → Extract if new
+         ├─→ Ingestion: Fetch all → Check existence → Extract if new
          │
-         └─→ Update: Fetch latest versions → Update existing nodes
+         ├─→ Update: Batch read existing → Fetch versions → Update nodes
+         │
+         └─→ Queue: Write extraction messages to Redis
          │
          ↓
-┌─────────────────┐
-│ Redis Queue     │  (Package extraction messages)
-└────────┬────────┘
+┌─────────────────────┐
+│ Redis Stream        │  (package_extraction)
+│ - Messages queued   │
+│ - Consumer group    │
+└────────┬────────────┘
+         │ Every 5 minutes
+         ↓
+┌─────────────────────┐
+│ redis_queue_        │
+│ processor           │
+│ - Read batch (100)  │
+│ - Validate schema   │
+│ - Route to extractor│
+└────────┬────────────┘
+         │
+         ├─→ PyPIPackageExtractor
+         ├─→ NPMPackageExtractor
+         ├─→ MavenPackageExtractor
+         ├─→ NuGetPackageExtractor
+         ├─→ CargoPackageExtractor
+         └─→ RubyGemsPackageExtractor
          │
          ↓
 ┌─────────────────┐
 │ Neo4j + MongoDB │  (Graph storage + Vulnerabilities)
 └─────────────────┘
 ```
+
+### Message Flow (Redis Queue)
+
+```json
+{
+  "node_type": "PyPIPackage",
+  "package": "requests",
+  "vendor": "Kenneth Reitz",
+  "repository_url": "https://github.com/psf/requests",
+  "constraints": ">=2.0.0",
+  "parent_id": "abc123",
+  "refresh": false
+}
+```
+
+**Error Handling**:
+- Validation errors → Dead-letter queue (`package_extraction-dlq`)
+- Unsupported types → Dead-letter queue with error details
+- Processing failures → Dead-letter queue for manual review
 
 ### Registry-Specific Implementation
 
@@ -151,15 +244,39 @@ docker compose logs -f
 # View logs from specific service
 docker compose logs -f dagster-webserver
 docker compose logs -f dagster-daemon
+docker compose logs -f redis
 
-# Restart services
+# Restart all services
 docker compose restart
+
+# Restart specific service
+docker compose restart redis
 
 # Stop services (keep data)
 docker compose down
 
-# Stop and remove all data
+# Stop and remove all data (including Redis queue)
 docker compose down -v
+```
+
+### Redis Service Commands
+
+```bash
+# Access Redis CLI inside container
+docker compose exec redis redis-cli
+
+# Check Redis is running
+docker compose exec redis redis-cli ping
+# Should return: PONG
+
+# Monitor Redis in real-time
+docker compose exec redis redis-cli MONITOR
+
+# Check Redis memory usage
+docker compose exec redis redis-cli INFO memory
+
+# View all keys in Redis
+docker compose exec redis redis-cli KEYS '*'
 ```
 
 ### Running Assets
@@ -173,6 +290,10 @@ docker compose exec dagster-webserver \
 docker compose exec dagster-webserver \
   dagster asset materialize -m src.dagster_app -a pypi_package_ingestion
 
+# Process Redis queue manually
+docker compose exec dagster-webserver \
+  dagster asset materialize -m src.dagster_app -a redis_queue_processor
+
 # List all available assets
 docker compose exec dagster-webserver \
   dagster asset list -m src.dagster_app
@@ -180,6 +301,36 @@ docker compose exec dagster-webserver \
 # View schedule status
 docker compose exec dagster-webserver \
   dagster schedule list -m src.dagster_app
+```
+
+### Redis Queue Operations
+
+```bash
+# All commands run inside the Redis container
+
+# Check number of messages in queue
+docker compose exec redis redis-cli XLEN package_extraction
+
+# Check number of messages in dead-letter queue
+docker compose exec redis redis-cli XLEN package_extraction-dlq
+
+# View consumer group info
+docker compose exec redis redis-cli XINFO GROUPS package_extraction
+
+# Add a test message to queue
+docker compose exec redis redis-cli XADD package_extraction '*' data '{"node_type":"PyPIPackage","package":"requests","vendor":"Kenneth Reitz"}'
+
+# Read messages from dead-letter queue
+docker compose exec redis redis-cli XREAD COUNT 10 STREAMS package_extraction-dlq 0
+
+# View pending messages in consumer group
+docker compose exec redis redis-cli XPENDING package_extraction extractors
+
+# Clear all messages from queue (be careful!)
+docker compose exec redis redis-cli DEL package_extraction
+
+# Clear dead-letter queue
+docker compose exec redis redis-cli DEL package_extraction-dlq
 ```
 
 ### Development
@@ -216,10 +367,11 @@ securechain-ssc-ingestion/
 │   │   │   ├── maven_assets.py      # Maven ingestion + updates
 │   │   │   ├── nuget_assets.py      # NuGet ingestion + updates
 │   │   │   ├── cargo_assets.py      # Cargo ingestion + updates
-│   │   │   └── rubygems_assets.py   # RubyGems ingestion + updates
+│   │   │   ├── rubygems_assets.py   # RubyGems ingestion + updates
+│   │   │   └── redis_queue_assets.py # Redis queue processor
 │   │   ├── resources/     # ConfigurableResource definitions
 │   │   │   └── __init__.py          # 10 resources (APIs, DB services)
-│   │   └── schedules.py   # 12 schedules (6 ingestion + 6 updates)
+│   │   └── schedules.py   # 13 schedules (6 ingestion + 6 updates + 1 queue)
 │   ├── processes/         # Business logic (Dagster-agnostic)
 │   │   ├── extractors/    # Package extractors for each ecosystem
 │   │   └── updaters/      # Version updaters for each ecosystem
@@ -234,7 +386,8 @@ securechain-ssc-ingestion/
 │   │   ├── maven_package_schema.py
 │   │   ├── nuget_package_schema.py
 │   │   ├── cargo_package_schema.py
-│   │   └── rubygems_package_schema.py
+│   │   ├── rubygems_package_schema.py
+│   │   └── package_message_schema.py # Redis message schema
 │   ├── utils/             # Helper functions
 │   │   ├── redis_queue.py          # Redis stream management
 │   │   ├── repo_normalizer.py      # URL normalization
@@ -243,7 +396,7 @@ securechain-ssc-ingestion/
 │   ├── session.py         # HTTP session management
 │   ├── cache.py           # Caching utilities (1hr TTL)
 │   └── settings.py        # Pydantic Settings (env vars)
-├── docker-compose.yml     # 3 services (postgres, daemon, webserver)
+├── docker-compose.yml     # 4 services (postgres, redis, daemon, webserver)
 ├── Dockerfile             # Multi-stage build (builder + runtime)
 ├── requirements.txt       # Python dependencies
 ├── template.env           # Environment variable template
@@ -270,15 +423,27 @@ VULN_DB_USER='mongoSecureChain'
 VULN_DB_PASSWORD='your-secure-password'  # Change in production!
 ```
 
-#### Redis Queue
+#### Redis Queue Configuration
+
+Redis is used for asynchronous package extraction and runs as a Docker service. The `redis_queue_processor` asset consumes messages from the stream every 5 minutes.
+
 ```bash
-REDIS_HOST=localhost
-REDIS_PORT=6379
-REDIS_DB=0
-REDIS_STREAM=package_extraction
-REDIS_GROUP=extractors
-REDIS_CONSUMER=package-consumer
+REDIS_HOST=redis                  # Redis service name in docker-compose
+REDIS_PORT=6379                   # Redis server port
+REDIS_DB=0                        # Redis database number
+REDIS_STREAM=package_extraction   # Stream name for messages
+REDIS_GROUP=extractors            # Consumer group name
+REDIS_CONSUMER=package-consumer   # Consumer identifier (generic, not ecosystem-specific)
 ```
+
+**Redis Features**:
+- ✅ Runs as Docker service (redis:7-alpine)
+- ✅ Data persistence with AOF (Append Only File)
+- ✅ Health checks enabled
+- ✅ Volume mount for data persistence (`redis_data`)
+- ✅ Exposed on port 6379 for external access if needed
+
+**Note**: The consumer name was changed from `pypi-consumer` to `package-consumer` to reflect support for all 6 package ecosystems.
 
 #### Dagster PostgreSQL
 ```bash
@@ -341,6 +506,14 @@ Each asset reports comprehensive metrics:
 - `errors`: Failed updates
 - `success_rate`: Percentage of successful updates
 
+**Redis Queue Processor**:
+- `total_processed`: Total messages read from queue
+- `successful`: Successfully processed messages
+- `failed`: Failed processing (moved to DLQ)
+- `validation_errors`: Messages with invalid schema
+- `unsupported_types`: Messages with unknown node_type
+- `success_rate`: Percentage of successful processing
+
 ## Troubleshooting
 
 ### Common Issues
@@ -350,12 +523,32 @@ Each asset reports comprehensive metrics:
 # Check logs
 docker compose logs dagster-daemon
 docker compose logs dagster-webserver
+docker compose logs redis
 
 # Verify network exists
 docker network inspect securechain
 
+# Check all services status
+docker compose ps
+
 # Rebuild containers
 docker compose up -d --build
+```
+
+**Redis not starting**
+```bash
+# Check Redis logs
+docker compose logs redis
+
+# Verify Redis health
+docker compose exec redis redis-cli ping
+
+# Restart Redis
+docker compose restart redis
+
+# Remove Redis data and restart (WARNING: clears all messages)
+docker compose down -v
+docker compose up -d
 ```
 
 **Assets not appearing in UI**
@@ -364,7 +557,7 @@ docker compose up -d --build
 docker compose exec dagster-webserver \
   python -c "from src.dagster_app import defs; print(len(defs.get_asset_graph().get_all_asset_keys()))"
 
-# Should print 12 (6 ingestion + 6 update assets)
+# Should print 13 (6 ingestion + 6 update + 1 queue processor)
 ```
 
 **Database connection errors**
@@ -372,6 +565,36 @@ docker compose exec dagster-webserver \
 # Check .env file matches docker-compose.yml service names
 # For dockerized: use service names (neo4j, mongo, dagster-postgres)
 # For local: use localhost
+```
+
+**Redis connection errors**
+```bash
+# Check Redis is running and accessible from webserver
+docker compose exec dagster-webserver python -c "from redis import Redis; r = Redis(host='redis', port=6379); print('Redis OK:', r.ping())"
+
+# Verify Redis service is in same network
+docker network inspect securechain | grep redis
+
+# Check Redis configuration in .env
+cat .env | grep REDIS
+
+# If consumer group doesn't exist, create it:
+docker compose exec redis redis-cli XGROUP CREATE package_extraction extractors 0 MKSTREAM
+
+# Check consumer group status
+docker compose exec redis redis-cli XINFO GROUPS package_extraction
+```
+
+**Messages stuck in dead-letter queue**
+```bash
+# Check DLQ length
+docker compose exec redis redis-cli XLEN package_extraction-dlq
+
+# Read messages from DLQ
+docker compose exec redis redis-cli XREAD COUNT 10 STREAMS package_extraction-dlq 0
+
+# Clear DLQ if needed (after fixing issues)
+docker compose exec redis redis-cli DEL package_extraction-dlq
 ```
 
 **Port 3000 already in use**
@@ -410,6 +633,35 @@ See `CLAUDE.md` for detailed instructions on adding support for new package regi
 6. Create resource in `src/dagster_app/resources/`
 7. Add schedules in `src/dagster_app/schedules.py`
 8. Update imports in `__init__.py` files
+9. Add extractor mapping in `redis_queue_assets.py` for queue processing
+
+### Working with Redis Queue
+
+To add a message to the queue for processing:
+
+```python
+import json
+from redis import Redis
+
+r = Redis(host='localhost', port=6379, db=0)
+
+# Create message following PackageMessageSchema
+message = {
+    "node_type": "PyPIPackage",      # Required
+    "package": "requests",            # Required
+    "vendor": "Kenneth Reitz",        # Optional
+    "repository_url": "https://github.com/psf/requests",  # Optional
+    "constraints": ">=2.0.0,<3.0.0",  # Optional
+    "parent_id": "abc123",            # Optional
+    "parent_version": "1.0.0",        # Optional
+    "refresh": False                  # Optional
+}
+
+# Add to stream
+r.xadd("package_extraction", {"data": json.dumps(message)})
+```
+
+The `redis_queue_processor` will pick up the message in the next run (every 5 minutes).
 
 ## Contributing
 
@@ -420,11 +672,13 @@ Contributions are welcome! Please ensure:
 - Business logic stays in `src/processes/`, not in assets
 - Type hints are used throughout
 - Documentation is updated (README.md + CLAUDE.md)
+- Redis messages conform to `PackageMessageSchema`
 
 ## Additional Resources
 
 - **CLAUDE.md**: Comprehensive AI agent context with detailed architecture and implementation notes
 - **Dagster Documentation**: https://docs.dagster.io/
+- **Redis Streams**: https://redis.io/docs/data-types/streams/
 - **Project Repository**: https://github.com/securechaindev/securechain-ssc-ingestion
 - **Data Dumps**: https://doi.org/10.5281/zenodo.17131401
 

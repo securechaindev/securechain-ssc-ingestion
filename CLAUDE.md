@@ -46,22 +46,32 @@
 
 ### Docker Services
 
-**3 services in docker-compose.yml:**
+**4 services in docker-compose.yml:**
 
 1. **dagster-postgres** (postgres:18)
    - Stores Dagster metadata (runs, events, schedules)
    - Port: 5432 (internal)
+   - Volume: `dagster_postgres_data`
    - Health check enabled
 
-2. **dagster-daemon**
+2. **redis** (redis:7-alpine)
+   - Message queue for asynchronous package extraction
+   - Port: 6379 (exposed)
+   - Volume: `redis_data`
+   - Command: `redis-server --appendonly yes` (AOF persistence)
+   - Health check enabled
+
+3. **dagster-daemon**
    - Processes schedules and sensors
    - Command: `dagster-daemon run -m src.dagster_app`
+   - Depends on: postgres, redis
    - No exposed ports
 
-3. **dagster-webserver**
+4. **dagster-webserver**
    - Web UI for monitoring and management
    - Command: `dagster-webserver -h 0.0.0.0 -p 3000 -m src.dagster_app`
    - Port: 3000 (exposed)
+   - Depends on: postgres, redis, daemon
 
 **External Network**: `securechain` (must exist, connects to Neo4j/MongoDB)
 
@@ -80,7 +90,8 @@ securechain-ssc-ingestion/
 │   │   │   ├── maven_assets.py
 │   │   │   ├── cargo_assets.py
 │   │   │   ├── rubygems_assets.py
-│   │   │   └── nuget_assets.py
+│   │   │   ├── nuget_assets.py
+│   │   │   └── redis_queue_assets.py
 │   │   └── resources/            # ConfigurableResource definitions
 │   │       └── __init__.py       # 10 resources (APIs, DB services, attributor)
 │   ├── processes/                # Business logic (reusable, Dagster-agnostic)
@@ -336,6 +347,96 @@ for doc in docs:
 - **Rate Limiting**: 0.2s delay between requests
 - **Termination**: Continues until empty response
 - **Cache Key**: `all_rubygems_packages`
+
+## Redis Queue Processor Asset
+
+The `redis_queue_processor` asset reads package extraction messages from Redis and processes them using the appropriate extractor based on `node_type`.
+
+### Purpose
+
+This asset enables **asynchronous package processing** by consuming messages from a Redis stream. Instead of directly calling extractors, other parts of the system can queue package extraction requests to Redis, and this asset will process them periodically.
+
+### How It Works
+
+1. **Reads messages** from Redis stream in batches (100 messages per run)
+2. **Validates** each message using `PackageMessageSchema`
+3. **Routes** to the appropriate extractor based on `node_type`:
+   - `PyPIPackage` → `PyPIPackageExtractor`
+   - `NPMPackage` → `NPMPackageExtractor`
+   - `MavenPackage` → `MavenPackageExtractor`
+   - `NuGetPackage` → `NuGetPackageExtractor`
+   - `CargoPackage` → `CargoPackageExtractor`
+   - `RubyGemsPackage` → `RubyGemsPackageExtractor`
+4. **Acknowledges** successful processing or moves failed messages to dead-letter queue
+5. **Reports** metrics: total_processed, successful, failed, validation_errors, unsupported_types
+
+### Message Format
+
+Messages must conform to `PackageMessageSchema`:
+
+```python
+{
+    "node_type": "PyPIPackage",           # Required: Package manager type
+    "package": "requests",                 # Required: Package name
+    "vendor": "Kenneth Reitz",             # Optional: Package vendor
+    "repository_url": "https://...",       # Optional: Repository URL
+    "constraints": ">=2.0.0,<3.0.0",      # Optional: Version constraints
+    "parent_id": "abc123",                 # Optional: Parent package ID
+    "parent_version": "1.0.0",             # Optional: Parent version
+    "refresh": false,                      # Optional: Force refresh
+    "moment": "2025-10-09T10:00:00Z"      # Auto: Timestamp
+}
+```
+
+### Error Handling
+
+- **JSON Decode Errors**: Message moved to dead-letter queue (`package_extraction-dlq`)
+- **Validation Errors**: Invalid schema, moved to DLQ
+- **Unsupported Types**: Unknown `node_type`, moved to DLQ
+- **Processing Errors**: Extractor failures, moved to DLQ with error details
+
+### Schedule
+
+- **Frequency**: Every 5 minutes (`*/5 * * * *`)
+- **Status**: RUNNING by default
+- **Batch Size**: 100 messages per run
+- **Block Time**: 1 second (waits up to 1s for messages)
+
+### Metrics
+
+- `total_processed`: Total messages read from queue
+- `successful`: Successfully processed messages
+- `failed`: Failed processing (moved to DLQ)
+- `validation_errors`: Messages with invalid schema
+- `unsupported_types`: Messages with unknown node_type
+- `success_rate`: Percentage of successful processing
+
+### Use Cases
+
+1. **Dependency Discovery**: When analyzing a package, queue its dependencies for extraction
+2. **On-Demand Ingestion**: External systems can request package extraction via Redis
+3. **Retry Mechanism**: Failed extractions can be re-queued for retry
+4. **Load Distribution**: Distribute extraction work across multiple consumers
+
+### Redis Configuration
+
+Configured via `Settings` class (`src/settings.py`):
+
+```python
+REDIS_HOST=redis              # Redis service name in docker-compose
+REDIS_PORT=6379               # Redis server port
+REDIS_DB=0                    # Redis database number
+REDIS_STREAM=package_extraction    # Stream name
+REDIS_GROUP=extractors        # Consumer group name
+REDIS_CONSUMER=package-consumer    # Consumer name (generic, not ecosystem-specific)
+```
+
+**Redis runs as a Docker service** with:
+- Image: redis:7-alpine
+- Persistence: AOF (Append Only File) enabled
+- Volume: `redis_data` for data persistence
+- Health checks enabled
+- Accessible at `redis:6379` from other containers
 
 ## Resources (Dependency Injection)
 

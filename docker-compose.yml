@@ -16,6 +16,23 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: securechain-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - securechain
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   dagster-daemon:
     build:
       context: .
@@ -37,6 +54,8 @@ services:
       - securechain
     depends_on:
       dagster-postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     command: dagster-daemon run -m src.dagster_app
 
@@ -64,12 +83,15 @@ services:
     depends_on:
       dagster-postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       dagster-daemon:
         condition: service_started
     command: dagster-webserver -h 0.0.0.0 -p 3000 -m src.dagster_app
 
 volumes:
   dagster_postgres_data:
+  redis_data:
 
 networks:
   securechain:

@@ -11,6 +11,7 @@ from src.dagster_app.assets import (
     nuget_packages_updates,
     pypi_package_ingestion,
     pypi_packages_updates,
+    redis_queue_processor,
     rubygems_package_ingestion,
     rubygems_packages_updates,
 )
@@ -119,6 +120,18 @@ nuget_schedule = ScheduleDefinition(
     description="Updates NuGet packages daily at 8:00 PM",
 )
 
+# ============================================================================
+# REDIS QUEUE PROCESSOR (Every 5 minutes, RUNNING by default)
+# ============================================================================
+
+redis_queue_schedule = ScheduleDefinition(
+    name="redis_queue_processor",
+    target=redis_queue_processor,
+    cron_schedule="*/5 * * * *",
+    default_status=DefaultScheduleStatus.RUNNING,
+    description="Processes package extraction messages from Redis queue every 5 minutes",
+)
+
 all_schedules = [
     # Ingestion schedules
     pypi_ingestion_schedule,
@@ -134,4 +147,6 @@ all_schedules = [
     cargo_schedule,
     rubygems_schedule,
     nuget_schedule,
+    # Redis queue processor
+    redis_queue_schedule,
 ]

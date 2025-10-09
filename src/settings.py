@@ -4,17 +4,18 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    GRAPH_DB_URI: str = ""
-    GRAPH_DB_USER: str = ""
-    GRAPH_DB_PASSWORD: str = ""
-    VULN_DB_URI: str = ""
-    VULN_DB_USER: str = ""
-    VULN_DB_PASSWORD: str = ""
-    DOCS_URL: str | None = None
-    SERVICES_ALLOWED_ORIGINS: list[str] = []
-    ALGORITHM: str = ""
-    JWT_ACCESS_SECRET_KEY: str = ""
-    GITHUB_GRAPHQL_API_KEY: str = ""
+    GRAPH_DB_URI: str = "bolt://localhost:7687"
+    GRAPH_DB_USER: str = "neo4j"
+    GRAPH_DB_PASSWORD: str = "neoSecureChain"
+    VULN_DB_URI: str = "mongodb://mongoSecureChain:mongoSecureChain@localhost:27017/admin"
+    VULN_DB_USER: str = "mongoSecureChain"
+    VULN_DB_PASSWORD: str = "mongoSecureChain"
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 0
+    REDIS_STREAM: str = "package_extraction"
+    REDIS_GROUP: str = "extractors"
+    REDIS_CONSUMER: str = "package-consumer"
 
 
     class Config:

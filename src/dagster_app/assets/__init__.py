@@ -18,6 +18,7 @@ from src.dagster_app.assets.pypi_assets import (
     pypi_package_ingestion,
     pypi_packages_updates,
 )
+from src.dagster_app.assets.redis_queue_assets import redis_queue_processor
 from src.dagster_app.assets.rubygems_assets import (
     rubygems_package_ingestion,
     rubygems_packages_updates,
@@ -34,6 +35,7 @@ __all__ = [
     "nuget_packages_updates",
     "pypi_package_ingestion",
     "pypi_packages_updates",
+    "redis_queue_processor",
     "rubygems_package_ingestion",
     "rubygems_packages_updates",
 ]
