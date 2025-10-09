@@ -162,28 +162,98 @@ Tells Dagster where to find the code.
 
 ## Assets (Data Products)
 
-**6 assets, one per package ecosystem:**
+**12 assets total: 6 ingestion assets + 6 update assets (one per package ecosystem):**
 
-| Asset Name | Registry | Schedule | Description |
-|------------|----------|----------|-------------|
-| `pypi_packages` | PyPI | Daily 10:00 AM | Python packages |
-| `npm_packages` | NPM | Daily 12:00 PM | Node.js packages |
-| `maven_packages` | Maven Central | Daily 2:00 PM | Java packages |
-| `cargo_packages` | crates.io | Daily 4:00 PM | Rust packages |
-| `rubygems_packages` | RubyGems | Daily 6:00 PM | Ruby packages |
-| `nuget_packages` | NuGet | Daily 8:00 PM | .NET packages |
+### Ingestion Assets (Weekly - Sundays)
+Process new packages that don't exist in the graph. State: **STOPPED** (manual activation required).
 
-**Asset Structure** (example):
+| Asset Name | Registry | Schedule | Time | Description |
+|------------|----------|----------|------|-------------|
+| `pypi_package_ingestion` | PyPI | Weekly | 2:00 AM | Ingests new Python packages (~500k packages) |
+| `npm_package_ingestion` | NPM | Weekly | 3:00 AM | Ingests new Node.js packages (~3M packages) |
+| `maven_package_ingestion` | Maven Central | Weekly | 4:00 AM | Ingests new Java packages (~500k-1M unique) |
+
+### Update Assets (Daily)
+Update existing packages with new versions. State: **RUNNING** (active by default).
+
+| Asset Name | Registry | Schedule | Time | Description |
+|------------|----------|----------|------|-------------|
+| `pypi_packages_updates` | PyPI | Daily | 10:00 AM | Updates Python package versions |
+| `npm_packages_updates` | NPM | Daily | 12:00 PM | Updates Node.js package versions |
+| `maven_packages` | Maven Central | Daily | 2:00 PM | Updates Java package versions |
+| `cargo_packages` | crates.io | Daily | 4:00 PM | Updates Rust package versions |
+| `rubygems_packages` | RubyGems | Daily | 6:00 PM | Updates Ruby package versions |
+| `nuget_packages` | NuGet | Daily | 8:00 PM | Updates .NET package versions |
+
+### Ingestion Asset Architecture
+
+**Purpose**: Discover and extract ALL packages from registries, adding only those that don't exist in the graph.
+
+**Process Flow**:
+```
+Registry API → Fetch All Package Names → Check Graph → Extract if New → Store
+     ↓                ↓                        ↓              ↓           ↓
+  PyPI/NPM/      List of all           read_package    Extractor    Neo4j
+   Maven         package names          _by_name()      .run()      Graph
+  (~500k-3M)                              
+```
+
+**Key Features**:
+- **Incremental**: Only processes packages not in graph
+- **Efficient**: Uses caching (1 hour TTL) and set-based deduplication
+- **Observable**: Logs every 100 new packages, every 1000 skipped
+- **Resilient**: Continues on errors, reports statistics
+- **Resource-aware**: STOPPED by default due to intensive nature
+
+**Ingestion Asset Structure** (example - PyPI):
+```python
+@asset(
+    description="Ingests new PyPI packages from the Python Package Index",
+    group_name="pypi",
+    compute_kind="python",
+)
+def pypi_package_ingestion(
+    context: AssetExecutionContext,
+    pypi_service: PyPIServiceResource,
+    package_service: PackageServiceResource,
+    version_service: VersionServiceResource,
+    attributor: AttributorResource,
+) -> Output[dict[str, Any]]:
+    # 1. Fetch all package names from registry
+    all_package_names = await pypi_svc.fetch_all_package_names()
+    
+    # 2. Check each package
+    for package_name in all_package_names:
+        existing = await package_svc.read_package_by_name("PyPIPackage", package_name)
+        
+        if not existing:
+            # 3. Create and run extractor for new packages
+            extractor = PyPIPackageExtractor(...)
+            await extractor.run()
+    
+    # 4. Return metrics
+    return Output(value=stats, metadata={...})
+```
+
+**Ingestion Metrics**:
+- `total_in_registry`: Total packages in the registry
+- `new_packages_ingested`: New packages added to graph
+- `skipped_existing`: Packages already in graph
+- `errors`: Errors encountered
+- `ingestion_rate`: Percentage of new packages
+
+### Update Asset Structure
+
+**Update Asset Structure** (example - PyPI):
 ```python
 @asset(
     description="Updates PyPI package versions",
     group_name="pypi"
 )
-def pypi_packages(
+def pypi_packages_updates(
     pypi_service: PyPIServiceResource,
     package_service: PackageServiceResource,
     version_service: VersionServiceResource,
-    vulnerability_service: VulnerabilityServiceResource,
     attributor: AttributorResource
 ) -> Output[dict]:
     # Business logic here
@@ -192,11 +262,80 @@ def pypi_packages(
     return Output(result, metadata={...})
 ```
 
-**Each asset returns metadata**:
+**Update Metrics**:
 - `packages_processed`: Number of packages updated
 - `total_versions`: Total versions in system
 - `errors`: Errors encountered
 - `success_rate`: Percentage of successful updates
+
+## Registry-Specific Implementation Details
+
+### PyPI Ingestion
+- **Endpoint**: `https://pypi.org/simple/`
+- **Method**: HTML parsing with regex extraction
+- **Volume**: ~500,000 packages
+- **Deduplication**: Not needed (Simple index returns unique packages)
+- **Cache Key**: `all_pypi_packages`
+
+### NPM Ingestion
+- **Endpoint**: `https://replicate.npmjs.com/_all_docs`
+- **Method**: JSON document listing
+- **Volume**: ~3,000,000 packages
+- **Deduplication**: Filters `_design/` documents
+- **Normalization**: Converts to lowercase
+- **Cache Key**: `all_npm_packages`
+
+### Maven Ingestion
+- **Endpoint**: `https://search.maven.org/solrsearch/select?q=*:*`
+- **Method**: Solr pagination (1000 per batch)
+- **Volume**: ~10,000,000 artifacts → ~500,000-1,000,000 unique packages
+- **Deduplication**: Uses `set` for O(1) lookup (group_id:artifact_id combinations)
+- **Note**: Each version is a separate artifact, we extract unique group_id:artifact_id pairs
+- **Optimization**: 
+  - Set-based deduplication (O(1) vs O(n))
+  - Progress logs every 10k artifacts
+  - 0.1s delay between batches to avoid rate limiting
+- **Cache Key**: `all_mvn_packages`
+
+**Maven Deduplication Example**:
+```python
+seen_packages = set()  # O(1) lookup
+for doc in docs:
+    package_key = f"{group_id}:{artifact_id}"
+    if package_key not in seen_packages:
+        seen_packages.add(package_key)
+        all_packages.append({...})
+```
+
+### NuGet Ingestion
+- **Endpoint**: `https://azuresearch-usnc.nuget.org/query`
+- **Method**: Search API with pagination (1000 per batch, skip-based)
+- **Volume**: ~400,000 packages
+- **Deduplication**: Not needed (Search API returns unique packages)
+- **Rate Limiting**: 0.5s delay between requests
+- **Special Features**:
+  - Extracts vendor from `authors` field (first author)
+  - Fetches version-specific metadata via catalog service
+  - Supports version listing and requirements extraction
+- **Cache Key**: `all_nuget_packages`
+
+### Cargo Ingestion
+- **Endpoint**: `https://crates.io/api/v1/crates`
+- **Method**: Page-based pagination (100 crates per page)
+- **Volume**: ~150,000 crates
+- **Deduplication**: Not needed (API returns unique crates)
+- **Rate Limiting**: Crates.io requires User-Agent header
+- **Note**: Uses page parameter instead of skip/limit
+- **Cache Key**: `all_cargo_packages`
+
+### RubyGems Ingestion
+- **Endpoint**: `https://rubygems.org/api/v1/gems.json`
+- **Method**: Sequential page-based pagination
+- **Volume**: ~180,000 gems
+- **Deduplication**: Not needed (API returns unique gems)
+- **Rate Limiting**: 0.2s delay between requests
+- **Termination**: Continues until empty response
+- **Cache Key**: `all_rubygems_packages`
 
 ## Resources (Dependency Injection)
 
@@ -215,6 +354,63 @@ def pypi_packages(
 
 Resources are configured in `defs` and injected into assets.
 
+## API Services Enhancement
+
+### New Methods for Package Ingestion
+
+**PyPI Service** (`src/services/apis/pypi_api.py`):
+```python
+async def fetch_all_package_names(self) -> list[str]:
+    """Fetches all package names from PyPI Simple index"""
+    # Returns ~500k package names
+    # Uses HTML parsing + regex
+    # Cache: 1 hour
+```
+
+**NPM Service** (`src/services/apis/npm_api.py`):
+```python
+async def fetch_all_package_names(self) -> list[str]:
+    """Fetches all package names from NPM registry"""
+    # Returns ~3M package names
+    # Uses _all_docs endpoint
+    # Cache: 1 hour
+
+async def get_versions(self, metadata: dict) -> list[dict]:
+    """Extract ordered versions from metadata"""
+
+async def fetch_package_version_metadata(self, package_name: str, version: str) -> dict:
+    """Fetch metadata for specific version"""
+
+async def get_package_requirements(self, version_metadata: dict) -> dict[str, str]:
+    """Get dependencies from version metadata"""
+```
+
+**Maven Service** (`src/services/apis/maven_api.py`):
+```python
+async def fetch_all_packages(self) -> list[dict[str, str]]:
+    """
+    Fetches all unique packages (group_id:artifact_id) from Maven Central.
+    
+    Key Points:
+    - Maven has ~10M artifacts (each version counts)
+    - Returns ~500k-1M unique packages
+    - Uses set-based deduplication (O(1) lookup)
+    - Batch size: 1000 per request
+    - No artificial limit (processes all)
+    - Progress logs every 10k artifacts
+    - Cache: 1 hour
+    
+    Returns: [{"group_id": "...", "artifact_id": "...", "name": "..."}]
+    """
+```
+
+**Performance Optimizations**:
+- **Caching**: 1-hour TTL reduces repeated API calls
+- **Set-based deduplication**: O(1) vs O(n) for Maven uniqueness
+- **Batch processing**: 1000 items per request for optimal throughput
+- **Rate limiting**: 0.1s delay between Maven requests
+- **Progress logging**: Every 10k items for observability
+
 ## Environment Variables
 
 **Required in .env:**
@@ -230,6 +426,14 @@ VULN_DB_URI='mongodb://user:pass@mongo:27017/admin'
 VULN_DB_USER='mongoSecureChain'
 VULN_DB_PASSWORD='your-password'
 
+# Redis Configuration (Queue Management)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_DB=0
+REDIS_STREAM=package_extraction
+REDIS_GROUP=extractors
+REDIS_CONSUMER=package-consumer
+
 # Dagster PostgreSQL
 POSTGRES_USER=dagster
 POSTGRES_PASSWORD=your-password
@@ -243,6 +447,8 @@ DAGSTER_HOME=/opt/dagster/dagster_home
 # Python
 PYTHONPATH=/opt/dagster/app
 ```
+
+**Note**: All environment variables are managed through the `Settings` class in `src/settings.py` using Pydantic Settings for validation and type safety.
 
 ## Common Operations
 
@@ -304,15 +510,48 @@ docker compose down -v       # Remove data
 
 ### When Adding New Package Ecosystem
 
-1. Create API service in `src/services/apis/new_registry_service.py`
-2. Create schema in `src/schemas/new_package_schema.py`
-3. Create extractor in `src/processes/extractors/new_extractor.py`
-4. Create updater in `src/processes/updaters/new_updater.py`
-5. Create asset in `src/dagster_app/assets/new_assets.py`
-6. Create resource in `src/dagster_app/resources/__init__.py`
-7. Create schedule in `src/dagster_app/schedules.py`
-8. Import asset in `src/dagster_app/assets/__init__.py`
-9. Register resource and schedule in `src/dagster_app/__init__.py`
+1. **Create API service** in `src/services/apis/new_registry_service.py`
+   - Implement `fetch_all_package_names()` or `fetch_all_packages()` for ingestion
+   - Implement version fetching and metadata retrieval methods
+   - Add caching with appropriate TTL
+
+2. **Create schema** in `src/schemas/new_package_schema.py`
+   - Use Pydantic BaseModel
+   - Include all required fields (name, vendor, repository_url, etc.)
+
+3. **Create extractor** in `src/processes/extractors/new_extractor.py`
+   - Extend `PackageExtractor` base class
+   - Implement package creation and dependency extraction
+
+4. **Create updater** in `src/processes/updaters/new_updater.py`
+   - Implement version update logic
+   - Handle package metadata updates
+
+5. **Create ingestion asset** in `src/dagster_app/assets/new_assets.py`
+   - Create `new_package_ingestion` for initial bulk ingestion
+   - Follow the pattern: fetch all → check existence → extract if new
+   - Return ingestion metrics (total, new, skipped, errors)
+
+6. **Create update asset** in `src/dagster_app/assets/new_assets.py`
+   - Create `new_packages_updates` for daily version updates
+   - Follow the pattern: batch read → update → report metrics
+
+7. **Create resource** in `src/dagster_app/resources/__init__.py`
+   - Extend `ConfigurableResource`
+   - Create factory method to instantiate service
+
+8. **Create schedules** in `src/dagster_app/schedules.py`
+   - Create ingestion schedule (weekly, STOPPED by default)
+   - Create update schedule (daily, RUNNING by default)
+   - Space out timing to avoid conflicts
+
+9. **Import assets** in `src/dagster_app/assets/__init__.py`
+   - Import both ingestion and update assets
+   - Add to `__all__` list
+
+10. **Register in main module** in `src/dagster_app/__init__.py`
+    - Add resource to resources dict
+    - Schedules auto-discovered from `all_schedules`
 
 ## Troubleshooting
 
@@ -392,6 +631,7 @@ docker compose exec dagster-webserver \
 
 ---
 
-**Last Updated**: October 8, 2025  
+**Last Updated**: October 9, 2025  
 **Dagster Version**: 1.11.13  
-**Python Version**: 3.12
+**Python Version**: 3.12  
+**New Features**: Package ingestion assets for PyPI, NPM, and Maven with optimized deduplication and caching
