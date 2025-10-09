@@ -41,7 +41,7 @@ class NPMService:
 
                 await self.cache.set_cache("all_npm_packages", package_names, ttl=3600)
                 return package_names
-      
+
         except (ClientConnectorError, TimeoutError, JSONDecodeError, ContentTypeError, Exception):
             return []
 
@@ -106,7 +106,7 @@ class NPMService:
         metadata = await self.fetch_package_metadata(package_name)
         if not metadata:
             return None
-        
+
         versions_data = metadata.get("versions", {})
         return versions_data.get(version_name)
 

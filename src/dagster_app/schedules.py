@@ -2,7 +2,8 @@ from dagster import DefaultScheduleStatus, ScheduleDefinition
 
 from src.dagster_app.assets import (
     cargo_packages,
-    maven_packages,
+    maven_package_ingestion,
+    maven_packages_updates,
     npm_package_ingestion,
     npm_packages_updates,
     nuget_packages,
@@ -27,6 +28,14 @@ npm_ingestion_schedule = ScheduleDefinition(
     description="Ingests new NPM packages weekly on Sundays at 3:00 AM",
 )
 
+maven_ingestion_schedule = ScheduleDefinition(
+    name="maven_weekly_ingestion",
+    target=maven_package_ingestion,
+    cron_schedule="0 4 * * 0",
+    default_status=DefaultScheduleStatus.STOPPED,
+    description="Ingests new Maven packages weekly on Sundays at 4:00 AM",
+)
+
 pypi_schedule = ScheduleDefinition(
     name="pypi_daily_update",
     target=pypi_packages_updates,
@@ -45,7 +54,7 @@ npm_schedule = ScheduleDefinition(
 
 maven_schedule = ScheduleDefinition(
     name="maven_daily_update",
-    target=maven_packages,
+    target=maven_packages_updates,
     cron_schedule="0 14 * * *",
     default_status=DefaultScheduleStatus.RUNNING,
     description="Updates Maven packages daily at 2:00 PM",
@@ -78,6 +87,7 @@ nuget_schedule = ScheduleDefinition(
 all_schedules = [
     pypi_ingestion_schedule,
     npm_ingestion_schedule,
+    maven_ingestion_schedule,
     pypi_schedule,
     npm_schedule,
     maven_schedule,

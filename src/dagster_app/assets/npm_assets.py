@@ -42,7 +42,7 @@ def npm_package_ingestion(
 
             all_package_names = await npm_svc.fetch_all_package_names()
             total_packages = len(all_package_names)
-            
+
             logger.info(f"NPM - Found {total_packages} packages in the registry")
             context.log.info(f"NPM - Found {total_packages} packages in the registry")
 
@@ -67,12 +67,12 @@ def npm_package_ingestion(
                         npm_service=npm_svc,
                         attributor=attr,
                     )
-                    
+
                     await extractor.run()
                     new_packages += 1
-                    
+
                     context.log.info(f"NPM - Ingested new package: {package_name_lower} ({new_packages} new packages)")
-                    
+
                     if idx % 100 == 0:
                         context.log.info(f"NPM - Progress: {idx}/{total_packages} (New: {new_packages}, Skipped: {skipped_packages})")
 

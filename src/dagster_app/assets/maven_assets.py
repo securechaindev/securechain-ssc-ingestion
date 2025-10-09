@@ -10,7 +10,114 @@ from src.dagster_app.resources import (
     VersionServiceResource,
 )
 from src.logger import logger
+from src.processes.extractors import MavenPackageExtractor
 from src.processes.updaters import MavenVersionUpdater
+from src.schemas import MavenPackageSchema
+
+
+@asset(
+    description="Ingests new Maven packages from Maven Central",
+    group_name="maven",
+    compute_kind="python",
+)
+def maven_package_ingestion(
+    context: AssetExecutionContext,
+    maven_service: MavenServiceResource,
+    package_service: PackageServiceResource,
+    version_service: VersionServiceResource,
+    attributor: AttributorResource,
+) -> Output[dict[str, Any]]:
+    try:
+        logger.info("Starting Maven package ingestion process")
+
+        maven_svc = maven_service.get_service()
+        package_svc = package_service.get_service()
+        version_svc = version_service.get_service()
+        attr = attributor.get_attributor()
+
+        async def _run():
+            new_packages = 0
+            skipped_packages = 0
+            error_count = 0
+
+            all_packages = await maven_svc.fetch_all_packages()
+            total_packages = len(all_packages)
+
+            logger.info(f"Maven - Found {total_packages} packages in Maven Central")
+            context.log.info(f"Maven - Found {total_packages} packages in Maven Central")
+
+            for idx, package_info in enumerate(all_packages, 1):
+                try:
+                    group_id = package_info.get("group_id")
+                    artifact_id = package_info.get("artifact_id")
+                    package_name = package_info.get("name")
+
+                    if not group_id or not artifact_id:
+                        continue
+
+                    existing_package = await package_svc.read_package_by_name("MavenPackage", package_name)
+
+                    if existing_package:
+                        skipped_packages += 1
+                        if idx % 1000 == 0:
+                            context.log.info(f"Maven - Progress: {idx}/{total_packages} (New: {new_packages}, Skipped: {skipped_packages})")
+                        continue
+
+                    package_schema = MavenPackageSchema(
+                        group_id=group_id,
+                        artifact_id=artifact_id,
+                        name=package_name,
+                    )
+
+                    extractor = MavenPackageExtractor(
+                        package=package_schema,
+                        package_service=package_svc,
+                        version_service=version_svc,
+                        maven_service=maven_svc,
+                        attributor=attr,
+                    )
+
+                    await extractor.run()
+                    new_packages += 1
+
+                    context.log.info(f"Maven - Ingested new package: {package_name} ({new_packages} new packages)")
+
+                    if idx % 100 == 0:
+                        context.log.info(f"Maven - Progress: {idx}/{total_packages} (New: {new_packages}, Skipped: {skipped_packages})")
+
+                except Exception as e:
+                    error_count += 1
+                    logger.error(f"Maven - Error ingesting {package_name}: {e}")
+                    context.log.error(f"Maven - Error ingesting {package_name}: {e}")
+
+            logger.info(f"Maven ingestion process completed. New packages: {new_packages}, Skipped: {skipped_packages}, Errors: {error_count}")
+
+            return {
+                "total_in_central": total_packages,
+                "new_packages_ingested": new_packages,
+                "skipped_existing": skipped_packages,
+                "errors": error_count,
+            }
+
+        stats = run(_run())
+
+        return Output(
+            value=stats,
+            metadata={
+                "total_in_central": stats["total_in_central"],
+                "new_packages_ingested": stats["new_packages_ingested"],
+                "skipped_existing": stats["skipped_existing"],
+                "errors": stats["errors"],
+                "ingestion_rate": MetadataValue.float(
+                    (stats["new_packages_ingested"] / stats["total_in_central"] * 100)
+                    if stats["total_in_central"] > 0 else 0
+                ),
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"Maven - Fatal error in ingestion process: {e}")
+        raise
 
 
 @asset(
@@ -18,7 +125,7 @@ from src.processes.updaters import MavenVersionUpdater
     group_name="maven",
     compute_kind="python",
 )
-def maven_packages(
+def maven_packages_updates(
     context: AssetExecutionContext,
     maven_service: MavenServiceResource,
     package_service: PackageServiceResource,
