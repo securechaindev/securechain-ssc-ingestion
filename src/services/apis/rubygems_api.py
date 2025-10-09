@@ -5,6 +5,7 @@ from typing import Any
 from aiohttp import ClientConnectorError, ContentTypeError
 
 from src.cache import CacheManager
+from src.logger import logger
 from src.session import SessionManager
 from src.utils import Orderer, RepoNormalizer
 
@@ -14,8 +15,35 @@ class RubyGemsService:
         self.cache: CacheManager = CacheManager(manager="rubygems")
         self.BASE_V1_URL = "https://rubygems.org/api/v1/versions"
         self.BASE_V2_URL = "https://rubygems.org/api/v2/rubygems"
+        self.SEARCH_URL = "https://rubygems.org/api/v1/gems"
         self.orderer = Orderer("RubyGemsPackage")
         self.repo_normalizer = RepoNormalizer()
+
+    async def fetch_all_package_names(self) -> list[str]:
+        cached = await self.cache.get_cache("__all_packages__")
+        if cached:
+            return cached
+
+        session = await SessionManager.get_session()
+
+        try:
+            url = "https://rubygems.org/gems/list"
+
+            async with session.get(url, timeout=60) as resp:
+                if resp.status != 200:
+                    logger.error(f"RubyGems - Failed to fetch gem list: status {resp.status}")
+                    return []
+
+                text = await resp.text()
+                gem_names = [line.strip() for line in text.split('\n') if line.strip()]
+
+                logger.info(f"RubyGems - Fetched {len(gem_names)} gems")
+                await self.cache.set_cache("__all_packages__", gem_names, ttl=3600)
+                return gem_names
+
+        except Exception as e:
+            logger.error(f"RubyGems - Fatal error in fetch_all_package_names: {e}")
+            return []
 
     async def fetch_package_metadata(self, package_name: str) -> dict[str, Any] | None:
         cached = await self.cache.get_cache(package_name)

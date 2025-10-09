@@ -10,7 +10,105 @@ from src.dagster_app.resources import (
     VersionServiceResource,
 )
 from src.logger import logger
+from src.processes.extractors import RubyGemsPackageExtractor
 from src.processes.updaters import RubyGemsVersionUpdater
+from src.schemas import RubyGemsPackageSchema
+
+
+@asset(
+    description="Ingests new RubyGems from rubygems.org",
+    group_name="rubygems",
+    compute_kind="python",
+)
+def rubygems_package_ingestion(
+    context: AssetExecutionContext,
+    rubygems_service: RubyGemsServiceResource,
+    package_service: PackageServiceResource,
+    version_service: VersionServiceResource,
+    attributor: AttributorResource,
+) -> Output[dict[str, Any]]:
+    try:
+        logger.info("Starting RubyGems package ingestion process")
+
+        rubygems_svc = rubygems_service.get_service()
+        package_svc = package_service.get_service()
+        version_svc = version_service.get_service()
+        attr = attributor.get_attributor()
+
+        async def _run():
+            new_packages = 0
+            skipped_packages = 0
+            error_count = 0
+
+            all_gem_names = await rubygems_svc.fetch_all_package_names()
+            total_gems = len(all_gem_names)
+
+            logger.info(f"RubyGems - Found {total_gems} gems in rubygems.org")
+            context.log.info(f"RubyGems - Found {total_gems} gems in rubygems.org")
+
+            for idx, gem_name in enumerate(all_gem_names, 1):
+                try:
+                    gem_name_lower = gem_name.lower()
+
+                    existing_package = await package_svc.read_package_by_name("RubyGemsPackage", gem_name_lower)
+
+                    if existing_package:
+                        skipped_packages += 1
+                        if idx % 1000 == 0:
+                            context.log.info(f"RubyGems - Progress: {idx}/{total_gems} (New: {new_packages}, Skipped: {skipped_packages})")
+                        continue
+
+                    package_schema = RubyGemsPackageSchema(name=gem_name_lower)
+
+                    extractor = RubyGemsPackageExtractor(
+                        package=package_schema,
+                        package_service=package_svc,
+                        version_service=version_svc,
+                        rubygems_service=rubygems_svc,
+                        attributor=attr,
+                    )
+
+                    await extractor.run()
+                    new_packages += 1
+
+                    context.log.info(f"RubyGems - Ingested new gem: {gem_name_lower} ({new_packages} new gems)")
+
+                    if idx % 100 == 0:
+                        context.log.info(f"RubyGems - Progress: {idx}/{total_gems} (New: {new_packages}, Skipped: {skipped_packages})")
+
+                except Exception as e:
+                    error_count += 1
+                    logger.error(f"RubyGems - Error ingesting {gem_name}: {e}")
+                    context.log.error(f"RubyGems - Error ingesting {gem_name}: {e}")
+
+            logger.info(f"RubyGems ingestion process completed. New gems: {new_packages}, Skipped: {skipped_packages}, Errors: {error_count}")
+
+            return {
+                "total_in_registry": total_gems,
+                "new_packages_ingested": new_packages,
+                "skipped_existing": skipped_packages,
+                "errors": error_count,
+            }
+
+        stats = run(_run())
+
+        return Output(
+            value=stats,
+            metadata={
+                "total_in_registry": stats["total_in_registry"],
+                "new_packages_ingested": stats["new_packages_ingested"],
+                "skipped_existing": stats["skipped_existing"],
+                "errors": stats["errors"],
+                "ingestion_rate": MetadataValue.float(
+                    (stats["new_packages_ingested"] / stats["total_in_registry"] * 100)
+                    if stats["total_in_registry"] > 0 else 0
+                ),
+            }
+        )
+
+    except Exception as e:
+        logger.error(f"RubyGems - Fatal error in ingestion process: {e}")
+        raise
 
 
 @asset(
@@ -18,7 +116,7 @@ from src.processes.updaters import RubyGemsVersionUpdater
     group_name="rubygems",
     compute_kind="python",
 )
-def rubygems_packages(
+def rubygems_packages_updates(
     context: AssetExecutionContext,
     rubygems_service: RubyGemsServiceResource,
     package_service: PackageServiceResource,
