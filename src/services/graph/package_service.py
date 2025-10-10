@@ -31,10 +31,11 @@ class PackageService:
                 f"CREATE (parent)-[rel_p:REQUIRE{{constraints:$constraints{", parent_version_name:$parent_version_name" if parent_version_name else ""}}}]->(p)"
             )
         pkg_key = "group_id:$group_id, artifact_id:$artifact_id, name:$name" if node_type == "MavenPackage" else "name:$name"
+
         query = f"""
         {parent_match}
         MERGE(p:{node_type}{{{pkg_key}}})
-        ON CREATE SET p.vendor = $vendor, p.moment = $moment, p.repository_url = $repository_url
+        ON CREATE SET p.vendor = $vendor, p.moment = $moment, p.repository_url = $repository_url, p.import_names = $import_names
         ON MATCH SET p.moment = $moment
         {parent_rel}
         WITH p AS package

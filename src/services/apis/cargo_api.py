@@ -1,4 +1,7 @@
-from asyncio import sleep
+import io
+import re
+import tarfile
+from asyncio import sleep, to_thread
 from json import JSONDecodeError
 from typing import Any
 
@@ -162,3 +165,107 @@ class CargoService:
                 requirements[crate_id.lower()] = req or ""
 
         return requirements
+
+    async def extract_import_names(self, crate_name: str, version: str) -> list[str]:
+        cache_key = f"import_names:{crate_name}:{version}"
+        cached = await self.cache.get_cache(cache_key)
+        if cached:
+            return cached
+
+        download_url = f"https://crates.io/api/v1/crates/{crate_name}/{version}/download"
+        session = await SessionManager.get_session()
+
+        try:
+            async with session.get(download_url, timeout=30) as resp:
+                if resp.status != 200:
+                    logger.warning(f"Cargo - Failed to download {crate_name}@{version}: HTTP {resp.status}")
+                    return []
+
+                crate_bytes = await resp.read()
+                import_names = await to_thread(self.extract_from_tarball, crate_name, crate_bytes)
+
+                await self.cache.set_cache(cache_key, import_names, ttl=604800)
+                return import_names
+
+        except Exception as e:
+            logger.error(f"Cargo - Error extracting import_names for {crate_name}@{version}: {e}")
+            return []
+
+    def extract_from_tarball(self, crate_name: str, crate_bytes: bytes) -> list[str]:
+        import_names = set()
+
+        try:
+            with tarfile.open(fileobj=io.BytesIO(crate_bytes), mode="r:gz") as tar:
+                rs_files = [m for m in tar.getmembers() if m.name.endswith(".rs")]
+
+                for member in rs_files:
+                    try:
+                        file_data = tar.extractfile(member).read().decode("utf-8", errors="replace")
+
+                        import_names.update(self.extract_public_items(crate_name, file_data))
+
+                    except UnicodeDecodeError:
+                        logger.warning(f"Cargo - Unicode decode error in {member.name}")
+                        continue
+                    except Exception as e:
+                        logger.warning(f"Cargo - Error processing {member.name}: {e}")
+                        continue
+
+            import_names.add(crate_name)
+            return sorted(import_names)
+
+        except tarfile.ReadError as e:
+            logger.error(f"Cargo - Error reading tarball for {crate_name}: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"Cargo - Unexpected error extracting {crate_name}: {e}")
+            return []
+
+    def extract_public_items(self, crate_name: str, file_data: str) -> set[str]:
+        items = set()
+
+        pub_mods = re.findall(r'\bpub\s+mod\s+(\w+)', file_data)
+        for mod in pub_mods:
+            items.add(f"{crate_name}::{mod}")
+
+        pub_uses = re.findall(r'\bpub\s+use\s+(?:[\w:]+::)?(\w+)', file_data)
+        for name in pub_uses:
+            items.add(f"{crate_name}::{name}")
+
+        pub_structs = re.findall(r'\bpub\s+struct\s+(\w+)', file_data)
+        for struct in pub_structs:
+            items.add(f"{crate_name}::{struct}")
+
+        pub_enums = re.findall(r'\bpub\s+enum\s+(\w+)', file_data)
+        for enum in pub_enums:
+            items.add(f"{crate_name}::{enum}")
+
+        pub_traits = re.findall(r'\bpub\s+trait\s+(\w+)', file_data)
+        for trait in pub_traits:
+            items.add(f"{crate_name}::{trait}")
+
+        pub_fns = re.findall(r'^\s*pub\s+(?:const\s+|async\s+|unsafe\s+)*fn\s+(\w+)', file_data, re.MULTILINE)
+        for fn in pub_fns:
+            items.add(f"{crate_name}::{fn}")
+
+        pub_consts = re.findall(r'\bpub\s+const\s+(\w+)', file_data)
+        for const in pub_consts:
+            items.add(f"{crate_name}::{const}")
+
+        pub_statics = re.findall(r'\bpub\s+static\s+(\w+)', file_data)
+        for static in pub_statics:
+            items.add(f"{crate_name}::{static}")
+
+        pub_macro_rules = re.findall(r'#\[macro_export\]\s*macro_rules!\s+(\w+)', file_data)
+        for macro in pub_macro_rules:
+            items.add(f"{crate_name}::{macro}")
+
+        pub_macros = re.findall(r'\bpub\s+macro\s+(\w+)', file_data)
+        for macro in pub_macros:
+            items.add(f"{crate_name}::{macro}")
+
+        pub_types = re.findall(r'\bpub\s+type\s+(\w+)', file_data)
+        for type_alias in pub_types:
+            items.add(f"{crate_name}::{type_alias}")
+
+        return items
