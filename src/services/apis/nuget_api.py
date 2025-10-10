@@ -1,12 +1,11 @@
-from asyncio import sleep
+from asyncio import get_running_loop, sleep
+from io import BytesIO
 from json import JSONDecodeError
 from typing import Any
-from asyncio import get_running_loop
-from io import BytesIO
-from regex import search
 from zipfile import BadZipFile, ZipFile
 
 from aiohttp import ClientConnectorError, ContentTypeError
+from regex import search
 
 from src.cache import CacheManager
 from src.logger import logger

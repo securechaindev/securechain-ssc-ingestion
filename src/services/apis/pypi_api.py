@@ -1,9 +1,8 @@
-from asyncio import sleep
-from json import JSONDecodeError
-from typing import Any
-from asyncio import get_running_loop
+from asyncio import get_running_loop, sleep
 from io import BytesIO
+from json import JSONDecodeError
 from tarfile import open as open_tarfile
+from typing import Any
 from zipfile import ZipFile
 
 from aiohttp import ClientConnectorError, ContentTypeError
@@ -227,7 +226,7 @@ class PyPIService:
                                 continue
 
                             if len(parts) >= 2:
-                                module_path = ".".join(parts[:-1]) if parts[-1] != "__init__.py" else ".".join(parts[:-1])
+                                module_path = ".".join(parts[:-1])
                                 if module_path:
                                     import_names.add(module_path)
                                     import_names.add(parts[0])
@@ -251,7 +250,7 @@ class PyPIService:
                                     parts = file_info.split("/")
                                     if any(skip in parts for skip in ["test", "tests", "example", "examples", "docs"]):
                                         continue
-                                    
+
                                     if len(parts) >= 3 and parts[-1] == "__init__.py":
                                         import_names.add(parts[-2])
                     except Exception:
