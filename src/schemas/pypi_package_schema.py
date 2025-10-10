@@ -12,6 +12,10 @@ class PyPIPackageSchema(BaseModel):
     moment: datetime = Field(
         default_factory=datetime.now, description="Timestamp of the last update"
     )
+    import_names: list[str] = Field(
+        default_factory=list,
+        description="List of Python modules/packages that can be imported (e.g., 'requests', 'flask.app', 'numpy.array')"
+    )
 
     def to_dict(self) -> dict:
         return {
@@ -19,4 +23,5 @@ class PyPIPackageSchema(BaseModel):
             "vendor": self.vendor,
             "repository_url": self.repository_url,
             "moment": self.moment,
+            "import_names": self.import_names,
         }

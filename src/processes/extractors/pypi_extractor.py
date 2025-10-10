@@ -71,11 +71,18 @@ class PyPIPackageExtractor(PackageExtractor):
             await self.attributor.attribute_vulnerabilities(package_name, version) for version in versions
         ]
 
+        import_names = []
+        if versions:
+            latest_version = versions[-1].get("name")
+            if latest_version:
+                import_names = await self.pypi_service.extract_import_names(package_name, latest_version)
+
         pkg = PyPIPackageSchema(
             name=package_name,
             vendor=vendor or "n/a",
             repository_url=repository_url or "n/a",
             moment=datetime.now(),
+            import_names=import_names,
         )
 
         created_versions = await self.package_service.create_package_and_versions(
