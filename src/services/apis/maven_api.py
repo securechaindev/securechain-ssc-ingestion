@@ -253,7 +253,7 @@ class MavenService:
                     return []
 
                 jar_bytes = await resp.read()
-                import_names = await to_thread(self._extract_from_jar_sync, jar_bytes)
+                import_names = await to_thread(self.extract_from_jar, jar_bytes)
 
                 await self.cache.set_cache(cache_key, import_names, ttl=604800)
                 return import_names
@@ -262,7 +262,7 @@ class MavenService:
             logger.error(f"Maven - Error extracting import_names for {group_id}:{artifact_id}:{version}: {e}")
             return []
 
-    def _extract_from_jar_sync(self, jar_bytes: bytes) -> list[str]:
+    def extract_from_jar(self, jar_bytes: bytes) -> list[str]:
         try:
             with ZipFile(BytesIO(jar_bytes)) as jar:
                 all_packages = set()

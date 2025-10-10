@@ -1,9 +1,11 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class MavenPackageSchema(BaseModel):
+    model_config = ConfigDict(validate_assignment=True, str_strip_whitespace=True)
+
     group_id: str = Field(..., description="Group ID of the Maven package")
     artifact_id: str = Field(..., description="Artifact ID of the Maven package")
     name: str = Field(..., description="Full name of the Maven package (group_id:artifact_id)")

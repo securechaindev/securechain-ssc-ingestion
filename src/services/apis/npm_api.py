@@ -164,7 +164,7 @@ class NPMService:
                     return []
 
                 tgz_bytes = await resp.read()
-                import_names = await to_thread(self._extract_from_tarball_sync, package_name, tgz_bytes)
+                import_names = await to_thread(self.extract_from_tarball, package_name, tgz_bytes)
 
                 await self.cache.set_cache(cache_key, import_names, ttl=604800)
                 return import_names
@@ -173,7 +173,7 @@ class NPMService:
             logger.error(f"NPM - Error extracting import_names for {package_name}@{version}: {e}")
             return []
 
-    def _extract_from_tarball_sync(self, package_name: str, tgz_bytes: bytes) -> list[str]:
+    def extract_from_tarball(self, package_name: str, tgz_bytes: bytes) -> list[str]:
         import_names = set()
 
         try:

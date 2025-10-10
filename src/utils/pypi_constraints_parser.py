@@ -4,13 +4,10 @@ class PyPIConstraintsParser:
 
     async def parse(self, constraints: str) -> str:
         if constraints:
-            ctcs = []
-            for ctc in constraints.split(","):
-                if "||" in ctc:
-                    release = ctc.split(" ")[-1]
-                    ctcs.append("!= " + release)
-                else:
-                    ctcs.append(ctc.strip())
+            ctcs = [
+                f"!= {ctc.split(' ')[-1]}" if "||" in ctc else ctc.strip()
+                for ctc in constraints.split(",")
+            ]
             if ctcs:
                 clean_ctcs = await self.clean(ctcs)
                 if clean_ctcs:

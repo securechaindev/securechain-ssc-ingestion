@@ -1,4 +1,4 @@
-from asyncio import get_running_loop, sleep
+from asyncio import sleep, to_thread
 from io import BytesIO
 from json import JSONDecodeError
 from typing import Any
@@ -187,9 +187,8 @@ class NuGetService:
 
                 nupkg_bytes = await resp.read()
 
-            loop = get_running_loop()
-            import_names = await loop.run_in_executor(
-                None, self.extract_from_nupkg_sync, nupkg_bytes, package_name
+            import_names = await to_thread(
+                self.extract_from_nupkg, nupkg_bytes, package_name
             )
 
             if import_names:
@@ -207,7 +206,7 @@ class NuGetService:
             logger.error(f"NuGet - Error extrayendo import_names de {package_name}@{version}: {e}")
             return []
 
-    def extract_from_nupkg_sync(self, nupkg_bytes: bytes, package_name: str) -> list[str]:
+    def extract_from_nupkg(self, nupkg_bytes: bytes, package_name: str) -> list[str]:
         import_names = set()
 
         try:

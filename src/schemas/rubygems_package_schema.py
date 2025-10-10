@@ -1,9 +1,11 @@
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RubyGemsPackageSchema(BaseModel):
+    model_config = ConfigDict(validate_assignment=True, str_strip_whitespace=True)
+
     name: str = Field(..., description="Name of the RubyGems package (gem)")
     vendor: str = Field(default="n/a", description="Vendor source")
     repository_url: str = Field(

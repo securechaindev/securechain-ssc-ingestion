@@ -1,4 +1,4 @@
-from asyncio import get_running_loop, sleep
+from asyncio import sleep, to_thread
 from io import BytesIO
 from json import JSONDecodeError
 from tarfile import open as open_tarfile
@@ -193,9 +193,8 @@ class PyPIService:
 
                 package_bytes = await resp.read()
 
-            loop = get_running_loop()
-            import_names = await loop.run_in_executor(
-                None, self._extract_from_package_sync, package_bytes, file_type, package_name
+            import_names = await to_thread(
+                self.extract_from_package, package_bytes, file_type, package_name
             )
 
             if import_names:
@@ -213,7 +212,7 @@ class PyPIService:
             logger.error(f"PyPI - Error extrayendo import_names de {package_name}@{version}: {e}")
             return []
 
-    def _extract_from_package_sync(self, package_bytes: bytes, file_type: str, package_name: str) -> list[str]:
+    def extract_from_package(self, package_bytes: bytes, file_type: str, package_name: str) -> list[str]:
         import_names = set()
 
         try:

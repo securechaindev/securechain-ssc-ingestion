@@ -80,7 +80,7 @@ class PackageService:
         self,
         node_type: str,
         batch_size: int = 1000
-    ) -> AsyncGenerator[list[dict], None]:
+    ) -> AsyncGenerator[list[dict]]:
         skip = 0
         while True:
             query = f"""

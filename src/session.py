@@ -1,4 +1,4 @@
-from aiohttp import ClientSession
+from aiohttp import ClientSession, ClientTimeout
 
 
 class SessionManager:
@@ -7,7 +7,8 @@ class SessionManager:
     @classmethod
     async def get_session(cls) -> ClientSession:
         if cls._session is None or cls._session.closed:
-            cls._session = ClientSession()
+            timeout = ClientTimeout(total=60, connect=10)
+            cls._session = ClientSession(timeout=timeout)
         return cls._session
 
     @classmethod

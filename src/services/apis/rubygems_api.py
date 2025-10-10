@@ -1,4 +1,4 @@
-from asyncio import get_running_loop, sleep
+from asyncio import sleep, to_thread
 from io import BytesIO
 from json import JSONDecodeError
 from tarfile import TarError
@@ -161,9 +161,8 @@ class RubyGemsService:
 
                 gem_bytes = await resp.read()
 
-            loop = get_running_loop()
-            import_names = await loop.run_in_executor(
-                None, self._extract_from_gem_sync, gem_bytes
+            import_names = await to_thread(
+                self.extract_from_gem, gem_bytes
             )
 
             if import_names:
@@ -181,7 +180,7 @@ class RubyGemsService:
             logger.error(f"RubyGems - Error extrayendo import_names de {gem_name}@{version}: {e}")
             return []
 
-    def _extract_from_gem_sync(self, gem_bytes: bytes) -> list[str]:
+    def extract_from_gem(self, gem_bytes: bytes) -> list[str]:
         import_names = set()
 
         try:
