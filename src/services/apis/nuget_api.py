@@ -1,6 +1,10 @@
 from asyncio import sleep
 from json import JSONDecodeError
 from typing import Any
+from asyncio import get_running_loop
+from io import BytesIO
+from regex import search
+from zipfile import BadZipFile, ZipFile
 
 from aiohttp import ClientConnectorError, ContentTypeError
 
@@ -15,6 +19,7 @@ class NuGetService:
         self.cache: CacheManager = CacheManager(manager="nuget")
         self.BASE_URL = "https://api.nuget.org/v3/registration5-gz-semver2"
         self.SEARCH_URL = "https://azuresearch-usnc.nuget.org/query"
+        self.DOWNLOAD_URL = "https://www.nuget.org/api/v2/package"
         self.orderer = Orderer("NuGetPackage")
         self.repo_normalizer = RepoNormalizer()
 
@@ -162,3 +167,78 @@ class NuGetService:
                         return norm_url
 
         return None
+
+    async def extract_import_names(self, package_name: str, version: str) -> list[str]:
+        cache_key = f"import_names:{package_name}:{version}"
+        cached = await self.cache.get_cache(cache_key)
+        if cached:
+            logger.info(f"NuGet - import_names para {package_name}@{version} obtenidos de cache")
+            return cached
+
+        try:
+            logger.info(f"NuGet - Extrayendo import_names de {package_name}@{version}")
+
+            url = f"{self.DOWNLOAD_URL}/{package_name}/{version}"
+            session = await SessionManager.get_session()
+
+            async with session.get(url, timeout=30) as resp:
+                if resp.status != 200:
+                    logger.warning(f"NuGet - No se pudo descargar {package_name}@{version}: HTTP {resp.status}")
+                    return []
+
+                nupkg_bytes = await resp.read()
+
+            loop = get_running_loop()
+            import_names = await loop.run_in_executor(
+                None, self.extract_from_nupkg_sync, nupkg_bytes, package_name
+            )
+
+            if import_names:
+                await self.cache.set_cache(cache_key, import_names, ttl=604800)
+                logger.info(f"NuGet - {len(import_names)} import_names extraídos de {package_name}@{version}")
+            else:
+                logger.warning(f"NuGet - No se encontraron import_names en {package_name}@{version}")
+
+            return import_names
+
+        except TimeoutError:
+            logger.error(f"NuGet - Timeout al descargar {package_name}@{version}")
+            return []
+        except Exception as e:
+            logger.error(f"NuGet - Error extrayendo import_names de {package_name}@{version}: {e}")
+            return []
+
+    def extract_from_nupkg_sync(self, nupkg_bytes: bytes, package_name: str) -> list[str]:
+        import_names = set()
+
+        try:
+            with ZipFile(BytesIO(nupkg_bytes)) as nupkg_zip:
+                for file_info in nupkg_zip.namelist():
+                    if file_info.startswith("lib/") and file_info.endswith(".dll"):
+                        dll_name = file_info.split("/")[-1][:-4]
+                        if dll_name in ["System", "Microsoft.CSharp", "netstandard", "mscorlib"]:
+                            continue
+                        import_names.add(dll_name)
+
+                for file_info in nupkg_zip.namelist():
+                    if file_info.endswith(".nuspec"):
+                        try:
+                            nuspec_content = nupkg_zip.read(file_info).decode("utf-8")
+                            id_match = search(r"<id>([^<]+)</id>", nuspec_content)
+                            if id_match:
+                                package_id = id_match.group(1)
+                                import_names.add(package_id)
+                        except Exception:
+                            pass
+
+            if not import_names and package_name:
+                import_names.add(package_name)
+
+            return sorted(import_names)
+
+        except BadZipFile as e:
+            logger.error(f"NuGet - Error de ZIP: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"NuGet - Error inesperado en extracción: {e}")
+            return []
