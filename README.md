@@ -17,7 +17,8 @@ Built with **Dagster 1.11.13** for modern data orchestration, providing a clean 
 - 📊 **6 Package Ecosystems**: PyPI, NPM, Maven, NuGet, Cargo, RubyGems
 - 🗄️ **Graph Storage**: Neo4j for package relationships and dependency graphs
 - 🔐 **Vulnerability Tracking**: MongoDB for security advisories
-- ⚡ **Performance Optimized**: Set-based deduplication, caching (1hr TTL), batch processing
+- 🔍 **Import Names Extraction**: Automatic extraction of importable modules/classes for all packages
+- ⚡ **Performance Optimized**: Set-based deduplication, caching (1hr TTL for listings, 7-day for import_names), batch processing
 - 📅 **Smart Scheduling**: Staggered execution times to avoid resource conflicts
 - 📈 **Rich Metrics**: Ingestion rates, error tracking, success rates per ecosystem
 
@@ -185,6 +186,8 @@ All schedules can be enabled/disabled individually from the Dagster UI (`Automat
          │
          ├─→ Update: Batch read existing → Fetch versions → Update nodes
          │
+         ├─→ Import Names: Download package → Extract modules/classes → Cache (7 days)
+         │
          └─→ Queue: Write extraction messages to Redis
          │
          ↓
@@ -245,6 +248,21 @@ Each ecosystem has unique characteristics handled by specialized API clients:
 - **NuGet**: Search API with skip-based pagination
 - **Cargo**: Page-based pagination (100 per page)
 - **RubyGems**: Sequential pagination with rate limiting
+
+### Import Names Extraction
+
+All packages automatically extract **import_names** - the list of modules, classes, or namespaces that can be imported from each package. This enables dependency analysis and usage pattern detection.
+
+#### Extraction Strategy by Ecosystem
+
+| Ecosystem | File Format | Extraction Method | Example Output |
+|-----------|-------------|-------------------|----------------|
+| **Cargo** | `.tar.gz` → `.rs` files | Regex for `pub mod/struct/enum/trait/fn/const/static/macro/type` | `["serde", "serde::Serialize", "serde::Deserialize"]` |
+| **Maven** | `.jar` (ZIP) → `.class` files | Java package paths with deduplication | `["org.springframework.boot", "org.springframework.web"]` |
+| **NPM** | `.tgz` → `.js/.mjs/.ts` files | Module path mapping, excludes tests | `["express", "express/lib/router", "express/lib/application"]` |
+| **RubyGems** | `.gem` → `data.tar.gz` → `lib/*.rb` | Ruby module paths, converts to `::` format | `["rails", "rails::application", "rails::engine"]` |
+| **NuGet** | `.nupkg` (ZIP) → `.dll` files | DLL name extraction + `.nuspec` parsing | `["Newtonsoft.Json", "System.Text.Json"]` |
+| **PyPI** | `.whl` or `.tar.gz` → `.py` files | Python module discovery from `__init__.py` | `["requests", "requests.api", "requests.models"]` |
 
 ## Useful Commands
 
