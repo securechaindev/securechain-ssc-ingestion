@@ -7,7 +7,7 @@
 **Name**: SecureChain SSC Ingestion  
 **Type**: Data pipeline / ETL system  
 **Framework**: Dagster 1.11.13  
-**Language**: Python 3.12  
+**Language**: Python 3.13  
 **Purpose**: Ingest software package data from multiple ecosystems into SecureChain's knowledge graph
 
 ### What This Project Does
@@ -31,7 +31,7 @@
 └─────────────────────────────────────────────────────┘
               ↓
 ┌─────────────────────────────────────────────────────┐
-│  Application Layer (Python 3.12)                    │
+│  Application Layer (Python 3.13)                    │
 │  ├── Package Manager: UV (10-100x faster than pip) │
 │  ├── Assets (6 package updaters)                   │
 │  ├── Resources (API clients, DB connections)       │
@@ -1146,7 +1146,7 @@ ports:
 3. **Dockerfile**: Multi-stage build (builder + runtime) with UV for faster dependency installation
 4. **Git**: `.env` is gitignored, use `template.env` as reference
 5. **Dagster Version**: Currently 1.11.13 (check pyproject.toml)
-6. **Python Version**: 3.12 (specified in Dockerfile and pyproject.toml)
+6. **Python Version**: 3.13 (specified in Dockerfile and pyproject.toml) - includes JIT compiler and performance improvements
 7. **Volumes**: `/src` and `/dagster_home` are mounted for hot-reload during development
 8. **Package Manager**: UV is the only package manager - no pip or requirements.txt
 9. **Project Config**: `pyproject.toml` is the single source of truth for dependencies
@@ -1196,9 +1196,10 @@ docker compose exec dagster-webserver \
 
 **Last Updated**: October 10, 2025  
 **Dagster Version**: 1.11.13  
-**Python Version**: 3.12  
+**Python Version**: 3.13 (JIT compiler, improved async performance)  
 **Package Manager**: UV (native, no pip/requirements.txt)  
 **Recent Features**: 
+- Python 3.13 upgrade for ~15-20% performance improvement
 - UV package manager as sole dependency manager
 - pyproject.toml as single source of truth
 - uv.lock for reproducible installs

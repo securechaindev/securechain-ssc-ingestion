@@ -25,7 +25,7 @@ Built with **Dagster 1.11.13** for modern data orchestration, providing a clean 
 ## Tech Stack
 
 - **Dagster 1.11.13** - Modern data orchestrator with web UI
-- **Python 3.12** - Runtime environment
+- **Python 3.13** - Runtime environment with JIT compiler and improved performance
 - **UV** - Ultra-fast Python package manager (10-100x faster than pip)
 - **Neo4j** - Graph database for package relationships
 - **MongoDB** - Document database for vulnerability data

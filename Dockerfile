@@ -1,4 +1,4 @@
-FROM python:3.12-slim AS builder
+FROM python:3.13-slim AS builder
 
 WORKDIR /opt/dagster/app
 
@@ -14,7 +14,7 @@ COPY pyproject.toml uv.lock README.md ./
 
 RUN uv sync --frozen --no-group dev --no-cache
 
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 WORKDIR /opt/dagster/app
 
