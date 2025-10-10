@@ -1,5 +1,8 @@
-from asyncio import sleep
+from asyncio import get_running_loop, sleep
+from io import BytesIO
 from json import JSONDecodeError
+from tarfile import TarError
+from tarfile import open as open_tarfile
 from typing import Any
 
 from aiohttp import ClientConnectorError, ContentTypeError
@@ -16,6 +19,7 @@ class RubyGemsService:
         self.BASE_V1_URL = "https://rubygems.org/api/v1/versions"
         self.BASE_V2_URL = "https://rubygems.org/api/v2/rubygems"
         self.SEARCH_URL = "https://rubygems.org/api/v1/gems"
+        self.DOWNLOAD_URL = "https://rubygems.org/downloads"
         self.orderer = Orderer("RubyGemsPackage")
         self.repo_normalizer = RepoNormalizer()
 
@@ -136,3 +140,81 @@ class RubyGemsService:
                 requirements[name.lower()] = req or ""
 
         return requirements
+
+    async def extract_import_names(self, gem_name: str, version: str) -> list[str]:
+        cache_key = f"import_names:{gem_name}:{version}"
+        cached = await self.cache.get_cache(cache_key)
+        if cached:
+            logger.info(f"RubyGems - import_names para {gem_name}@{version} obtenidos de cache")
+            return cached
+
+        try:
+            logger.info(f"RubyGems - Extrayendo import_names de {gem_name}@{version}")
+
+            url = f"{self.DOWNLOAD_URL}/{gem_name}-{version}.gem"
+            session = await SessionManager.get_session()
+
+            async with session.get(url, timeout=30) as resp:
+                if resp.status != 200:
+                    logger.warning(f"RubyGems - No se pudo descargar {gem_name}@{version}: HTTP {resp.status}")
+                    return []
+
+                gem_bytes = await resp.read()
+
+            loop = get_running_loop()
+            import_names = await loop.run_in_executor(
+                None, self._extract_from_gem_sync, gem_bytes
+            )
+
+            if import_names:
+                await self.cache.set_cache(cache_key, import_names, ttl=604800)
+                logger.info(f"RubyGems - {len(import_names)} import_names extraídos de {gem_name}@{version}")
+            else:
+                logger.warning(f"RubyGems - No se encontraron import_names en {gem_name}@{version}")
+
+            return import_names
+
+        except TimeoutError:
+            logger.error(f"RubyGems - Timeout al descargar {gem_name}@{version}")
+            return []
+        except Exception as e:
+            logger.error(f"RubyGems - Error extrayendo import_names de {gem_name}@{version}: {e}")
+            return []
+
+    def _extract_from_gem_sync(self, gem_bytes: bytes) -> list[str]:
+        import_names = set()
+
+        try:
+            with open_tarfile(fileobj=BytesIO(gem_bytes), mode="r") as gem_tar:
+                data_tar_gz = None
+                for member in gem_tar.getmembers():
+                    if member.name.endswith("data.tar.gz"):
+                        data_tar_gz = gem_tar.extractfile(member).read()
+                        break
+
+                if not data_tar_gz:
+                    return []
+
+                with open_tarfile(fileobj=BytesIO(data_tar_gz), mode="r:gz") as data_tar:
+                    for member in data_tar.getmembers():
+                        if not member.isfile():
+                            continue
+
+                        if member.name.startswith("lib/") and member.name.endswith(".rb"):
+                            if "_spec.rb" in member.name or "_test.rb" in member.name:
+                                continue
+
+                            path = member.name[4:]
+                            import_name = path[:-3]
+
+                            ruby_style = import_name.replace("/", "::")
+                            import_names.add(ruby_style)
+
+            return sorted(import_names)
+
+        except TarError as e:
+            logger.error(f"RubyGems - Error de tarball: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"RubyGems - Error inesperado en extracción: {e}")
+            return []
