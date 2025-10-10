@@ -28,6 +28,7 @@ __pycache__
 # Documentation and non-essential files
 *.md
 !README.md
+!LICENSE
 CLAUDE.md
 UV_GUIDE.md
 .cursorignore
@@ -54,9 +55,6 @@ Dockerfile
 tests/
 test_*.py
 *_test.py
-
-# UV lock file (using requirements.txt in Docker for now)
-uv.lock
 
 # Other
 .DS_Store
