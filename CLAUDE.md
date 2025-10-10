@@ -14,8 +14,9 @@
 
 1. **Extracts** package metadata from 6 software registries (PyPI, NPM, Maven, Cargo, RubyGems, NuGet)
 2. **Processes** and validates data using Pydantic schemas
-3. **Stores** package relationships in Neo4j (graph) and vulnerabilities in MongoDB
-4. **Schedules** daily updates for each ecosystem at different times
+3. **Extracts** import_names (importable modules/classes) from package files for dependency analysis
+4. **Stores** package relationships in Neo4j (graph) and vulnerabilities in MongoDB
+5. **Schedules** daily updates for each ecosystem at different times
 
 ## Architecture
 
@@ -563,6 +564,368 @@ async def fetch_all_packages(self) -> list[dict[str, str]]:
 - **Rate limiting**: 0.1s delay between Maven requests
 - **Progress logging**: Every 10k items for observability
 
+## Import Names Extraction System
+
+All six package ecosystems automatically extract **import_names** - the list of modules, classes, namespaces, or functions that can be imported from each package. This enables advanced dependency analysis, usage pattern detection, and API surface discovery.
+
+### Architecture
+
+**Consistent Pattern Across All Ecosystems**:
+1. Download package file (`.tar.gz`, `.jar`, `.whl`, `.gem`, `.nupkg`, `.tgz`)
+2. Extract and parse source files (`.rs`, `.class`, `.py`, `.rb`, `.dll`, `.js`)
+3. Identify importable elements using ecosystem-specific strategies
+4. Cache results for 7 days (604,800 seconds)
+5. Store in Neo4j as `import_names` property on package nodes
+
+### Implementation by Ecosystem
+
+#### 1. Cargo (Rust)
+
+**Files**: `src/schemas/cargo_package_schema.py`, `src/services/apis/cargo_api.py`, `src/processes/extractors/cargo_extractor.py`
+
+**Strategy**:
+- Downloads `.tar.gz` from crates.io
+- Extracts all `.rs` files from `src/` directory
+- Uses regex to find public Rust elements:
+  - `pub mod`, `pub struct`, `pub enum`, `pub trait`
+  - `pub fn`, `pub const`, `pub static`
+  - `pub macro_rules!`, `pub type`
+- Excludes test files (`tests/`, `benches/`)
+- Format: `crate_name::module::Type`
+
+**Example Output**:
+```python
+["serde", "serde::Serialize", "serde::Deserialize", "serde::de", "serde::ser"]
+```
+
+**Service Method**:
+```python
+async def extract_import_names(crate_name: str, version: str) -> list[str]:
+    # Downloads from https://crates.io/api/v1/crates/{crate}/{version}/download
+    # Extracts .tar.gz → searches src/**/*.rs
+    # Cache: "import_names:{crate}:{version}", TTL: 7 days
+```
+
+#### 2. Maven (Java)
+
+**Files**: `src/schemas/maven_package_schema.py`, `src/services/apis/maven_api.py`, `src/processes/extractors/maven_extractor.py`
+
+**Strategy**:
+- Downloads `.jar` file from Maven Central
+- Opens JAR as ZIP archive
+- Extracts package paths from `.class` files
+- Applies intelligent deduplication:
+  - If `com.example` exists, excludes `com.example.subpackage`
+  - Keeps only root-level packages
+- Format: `com.company.package`
+
+**Example Output**:
+```python
+["org.springframework.boot", "org.springframework.web", "org.springframework.context"]
+```
+
+**Service Method**:
+```python
+async def extract_import_names(group_id: str, artifact_id: str, version: str) -> list[str]:
+    # Downloads from Maven Central repository
+    # Extracts .jar → .class files → package paths
+    # Deduplicates: keeps only unique root packages
+    # Cache: "import_names:{group_id}:{artifact_id}:{version}", TTL: 7 days
+```
+
+#### 3. NPM (JavaScript/TypeScript)
+
+**Files**: `src/schemas/npm_package_schema.py`, `src/services/apis/npm_api.py`, `src/processes/extractors/npm_extractor.py`
+
+**Strategy**:
+- Downloads `.tgz` from NPM registry
+- Extracts `.js`, `.mjs`, `.ts` files from package
+- Maps file paths to module paths
+- Excludes:
+  - Test files (`test/`, `tests/`, `__tests__/`)
+  - Node modules (`node_modules/`)
+  - Build artifacts (`dist/`, `build/`)
+  - Internal files (starts with `_`)
+- Format: `package/lib/module` or `package.module`
+
+**Example Output**:
+```python
+["express", "express/lib/router", "express/lib/application", "express/lib/request"]
+```
+
+**Service Method**:
+```python
+async def extract_import_names(package_name: str, version: str) -> list[str]:
+    # Downloads from https://registry.npmjs.org/{package}/-/{package}-{version}.tgz
+    # Extracts .tgz → .js/.mjs/.ts files → module paths
+    # Cache: "import_names:{package}:{version}", TTL: 7 days
+```
+
+#### 4. RubyGems (Ruby)
+
+**Files**: `src/schemas/rubygems_package_schema.py`, `src/services/apis/rubygems_api.py`, `src/processes/extractors/rubygems_extractor.py`
+
+**Strategy**:
+- Downloads `.gem` file from rubygems.org
+- Opens `.gem` as tarball → extracts `data.tar.gz` → extracts `lib/` directory
+- Finds all `.rb` files in `lib/`
+- Converts file paths to Ruby module format:
+  - `lib/my_gem/utils.rb` → `my_gem::utils`
+- Excludes test files (`*_spec.rb`, `*_test.rb`)
+- Format: `GemName::Module::Class` (Ruby `::` separator)
+
+**Example Output**:
+```python
+["rails", "rails::application", "rails::engine", "rails::railtie"]
+```
+
+**Service Method**:
+```python
+async def extract_import_names(gem_name: str, version: str) -> list[str]:
+    # Downloads from https://rubygems.org/downloads/{gem}-{version}.gem
+    # Extracts .gem → data.tar.gz → lib/**/*.rb
+    # Cache: "import_names:{gem}:{version}", TTL: 7 days
+```
+
+#### 5. NuGet (.NET)
+
+**Files**: `src/schemas/nuget_package_schema.py`, `src/services/apis/nuget_api.py`, `src/processes/extractors/nuget_extractor.py`
+
+**Strategy**:
+- Downloads `.nupkg` file from NuGet.org
+- Opens `.nupkg` as ZIP archive
+- Finds `.dll` files in `lib/` directories (e.g., `lib/net6.0/`, `lib/netstandard2.0/`)
+- Extracts namespace from DLL filename
+- Reads `.nuspec` file for additional metadata
+- Filters system libraries (`System`, `Microsoft.CSharp`, `netstandard`)
+- Fallback: uses package name if no DLLs found
+- Format: `Namespace.Subnamespace`
+
+**Example Output**:
+```python
+["Newtonsoft.Json", "Newtonsoft.Json.Linq", "Newtonsoft.Json.Schema"]
+```
+
+**Service Method**:
+```python
+async def extract_import_names(package_name: str, version: str) -> list[str]:
+    # Downloads from https://www.nuget.org/api/v2/package/{package}/{version}
+    # Extracts .nupkg (ZIP) → lib/**/*.dll + *.nuspec
+    # Cache: "import_names:{package}:{version}", TTL: 7 days
+```
+
+#### 6. PyPI (Python)
+
+**Files**: `src/schemas/pypi_package_schema.py`, `src/services/apis/pypi_api.py`, `src/processes/extractors/pypi_extractor.py`
+
+**Strategy**:
+- Downloads wheel (`.whl`) or source distribution (`.tar.gz`, `.zip`)
+- Prefers wheel for faster extraction
+- For wheel: extracts `.py` files from package directories
+- For sdist: finds `__init__.py` files to identify packages
+- Maps file paths to Python import paths
+- Excludes:
+  - Test directories (`test/`, `tests/`)
+  - Documentation (`docs/`)
+  - Examples (`examples/`, `example/`)
+- Normalizes package names (`my-package` → `my_package`)
+- Fallback: uses normalized package name
+- Format: `package.module.submodule`
+
+**Example Output**:
+```python
+["requests", "requests.api", "requests.models", "requests.sessions", "requests.adapters"]
+```
+
+**Service Method**:
+```python
+async def extract_import_names(package_name: str, version: str) -> list[str]:
+    # Downloads wheel or sdist from PyPI
+    # Extracts .whl (ZIP) or .tar.gz → .py files → module paths
+    # Cache: "import_names:{package}:{version}", TTL: 7 days
+```
+
+### Common Implementation Patterns
+
+**All services follow this pattern**:
+
+```python
+# In API service (e.g., cargo_api.py)
+class CargoService:
+    async def extract_import_names(self, crate: str, version: str) -> list[str]:
+        # 1. Check cache
+        cache_key = f"import_names:{crate}:{version}"
+        cached = await self.cache.get_cache(cache_key)
+        if cached:
+            return cached
+        
+        # 2. Download package file
+        url = f"https://crates.io/api/v1/crates/{crate}/{version}/download"
+        package_bytes = await download(url, timeout=30)
+        
+        # 3. Extract import_names (CPU-intensive, use thread pool)
+        loop = asyncio.get_running_loop()
+        import_names = await loop.run_in_executor(
+            None, self._extract_sync, package_bytes
+        )
+        
+        # 4. Cache for 7 days
+        await self.cache.set_cache(cache_key, import_names, ttl=604800)
+        return import_names
+    
+    def _extract_sync(self, package_bytes: bytes) -> list[str]:
+        # Synchronous extraction (runs in thread pool)
+        # Parse tarball/zip, extract source files, find imports
+        ...
+```
+
+**In Extractor** (e.g., `cargo_extractor.py`):
+
+```python
+class CargoPackageExtractor(PackageExtractor):
+    async def create_package(self, package_name: str, ...):
+        # ... existing code ...
+        
+        # Extract import_names from latest version
+        import_names = []
+        if versions:
+            latest_version = versions[-1].get("name")
+            if latest_version:
+                import_names = await self.cargo_service.extract_import_names(
+                    package_name, latest_version
+                )
+        
+        # Create package with import_names
+        pkg = CargoPackageSchema(
+            name=package_name,
+            import_names=import_names,  # ← New field
+            ...
+        )
+```
+
+### Performance Optimizations
+
+1. **7-Day Cache**: Import names rarely change, so 7-day TTL minimizes downloads
+2. **Thread Pool**: CPU-intensive parsing runs in `asyncio.to_thread()` to avoid blocking
+3. **Lazy Loading**: Only extracts for latest version during package creation
+4. **Smart Filtering**: Excludes tests, examples, and internal files
+5. **Fallback Strategy**: Uses package name if extraction fails (ensures field is never empty)
+6. **Timeout Protection**: 30-second timeout for downloads
+7. **Error Isolation**: Extraction failures don't block package creation
+
+### Standalone Backfill Scripts
+
+Located in `crawl_import_names/`:
+
+| Script | Ecosystem | Features |
+|--------|-----------|----------|
+| `crawl_cargo_import_names.py` | Cargo | Batch: 100, dotenv config, statistics |
+| `crawl_maven_import_names.py` | Maven | Deduplication, 30s timeout, stats |
+| `crawl_npm_import_names.py` | NPM | Direct LIMIT, 30s timeout, stats |
+| `crawl_rubygems_import_names.py` | RubyGems | 10 concurrent, dotenv, statistics |
+
+**Common Features**:
+- ✅ Dotenv configuration (no hardcoded credentials)
+- ✅ LIMIT 100 (processes 100 packages per run)
+- ✅ Comprehensive statistics (success, errors, no imports)
+- ✅ Thread pool usage for CPU-intensive operations
+- ✅ Proper error handling with specific exceptions
+- ✅ Progress logging
+
+**Usage**:
+```bash
+# Configure environment
+cp template.env .env
+nano .env  # Set NEO4J credentials
+
+# Run script
+python crawl_import_names/crawl_cargo_import_names.py
+
+# Output example:
+# ======================================================================
+# 🚀 Iniciando extracción de import_names para Cargo
+# ======================================================================
+# 📊 Crates a procesar: 100
+# ⚙️  Concurrencia máxima: 10
+# ⏱️  Timeout: 30s
+# ...
+# ======================================================================
+# 📊 RESUMEN DE EJECUCIÓN
+# ======================================================================
+# ✅ Exitosos:              87
+# ⚠️  Sin imports:           5
+# ❌ Errores descarga:       3
+# ❌ Errores proceso:        5
+# 📦 Total procesados:     100
+# ⏱️  Tiempo total:      45.32s
+# ⚡ Promedio:            0.45s/crate
+# ======================================================================
+```
+
+### Neo4j Storage and Queries
+
+**Schema Update**: All package schemas now include `import_names: list[str]` field.
+
+**Storage**: Automatically stored by `PackageService.create_package_and_versions()`:
+```cypher
+MERGE (p:CargoPackage {name: $name})
+ON CREATE SET 
+    p.vendor = $vendor,
+    p.repository_url = $repository_url,
+    p.import_names = $import_names  ← Stored here
+```
+
+**Example Queries**:
+
+```cypher
+// Find packages by specific import
+MATCH (p:PyPIPackage)
+WHERE "requests.api" IN p.import_names
+RETURN p.name, p.import_names
+
+// Count most popular imports
+MATCH (p:CargoPackage)
+UNWIND p.import_names AS import_name
+RETURN import_name, COUNT(*) AS packages_count
+ORDER BY packages_count DESC
+LIMIT 20
+
+// Find packages with many exports
+MATCH (p:NPMPackage)
+WHERE SIZE(p.import_names) > 10
+RETURN p.name, SIZE(p.import_names) AS export_count
+ORDER BY export_count DESC
+
+// Cross-ecosystem namespace analysis
+MATCH (p)
+WHERE p:PyPIPackage OR p:NPMPackage OR p:RubyGemsPackage
+UNWIND p.import_names AS import_name
+WITH import_name, labels(p)[0] AS ecosystem, COUNT(*) AS count
+RETURN ecosystem, import_name, count
+ORDER BY count DESC
+LIMIT 100
+```
+
+### Use Cases
+
+1. **API Surface Discovery**: Understand what's available to import from a package
+2. **Dependency Analysis**: Map actual usage patterns vs declared dependencies
+3. **Breaking Change Detection**: Compare import_names across versions
+4. **Ecosystem Comparison**: Analyze naming patterns across languages
+5. **Security Analysis**: Identify packages exposing sensitive APIs
+6. **Documentation Generation**: Auto-generate import guides
+7. **Code Migration**: Map old package imports to new ones
+
+### Future Enhancements
+
+**Potential improvements**:
+- Parse docstrings/comments for additional metadata
+- Extract function signatures and type hints
+- Build call graphs from import relationships
+- Detect deprecated imports
+- Version-specific import_names (not just latest)
+- Integration with IDE autocomplete systems
+
 ## Environment Variables
 
 **Required in .env:**
@@ -831,7 +1194,7 @@ docker compose exec dagster-webserver \
 
 ---
 
-**Last Updated**: October 9, 2025  
+**Last Updated**: October 10, 2025  
 **Dagster Version**: 1.11.13  
 **Python Version**: 3.12  
 **Package Manager**: UV (native, no pip/requirements.txt)  
@@ -842,3 +1205,6 @@ docker compose exec dagster-webserver \
 - Simplified development workflow (no scripts needed)
 - Package ingestion assets for PyPI, NPM, and Maven with optimized deduplication and caching
 - Redis queue processor for asynchronous package extraction
+- **Import Names Extraction System**: Automatic extraction of importable modules/classes for all 6 ecosystems (Cargo, Maven, NPM, RubyGems, NuGet, PyPI) with 7-day caching, thread pool execution, and Neo4j storage
+
+````
