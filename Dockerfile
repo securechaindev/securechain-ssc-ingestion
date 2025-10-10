@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
 
 COPY pyproject.toml .
 
-RUN uv sync --frozen --no-dev --no-cache
+RUN uv sync --frozen --no-group dev --no-cache
 
 FROM python:3.12-slim
 
