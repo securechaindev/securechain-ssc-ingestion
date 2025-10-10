@@ -1,6 +1,8 @@
-from asyncio import sleep
+from asyncio import sleep, to_thread
+from io import BytesIO
 from json import JSONDecodeError
 from typing import Any
+from zipfile import BadZipFile, ZipFile
 
 from aiohttp import ClientConnectorError, ContentTypeError
 
@@ -233,3 +235,56 @@ class MavenService:
                 pass
 
         return requirements
+
+    async def extract_import_names(self, group_id: str, artifact_id: str, version: str) -> list[str]:
+        cache_key = f"import_names:{group_id}:{artifact_id}:{version}"
+        cached = await self.cache.get_cache(cache_key)
+        if cached:
+            return cached
+
+        group_path = group_id.replace(".", "/")
+        download_url = f"{self.CENTRAL_URL}/{group_path}/{artifact_id}/{version}/{artifact_id}-{version}.jar"
+        session = await SessionManager.get_session()
+
+        try:
+            async with session.get(download_url, timeout=30) as resp:
+                if resp.status != 200:
+                    logger.warning(f"Maven - Failed to download {group_id}:{artifact_id}:{version}: HTTP {resp.status}")
+                    return []
+
+                jar_bytes = await resp.read()
+                import_names = await to_thread(self._extract_from_jar_sync, jar_bytes)
+
+                await self.cache.set_cache(cache_key, import_names, ttl=604800)
+                return import_names
+
+        except Exception as e:
+            logger.error(f"Maven - Error extracting import_names for {group_id}:{artifact_id}:{version}: {e}")
+            return []
+
+    def _extract_from_jar_sync(self, jar_bytes: bytes) -> list[str]:
+        try:
+            with ZipFile(BytesIO(jar_bytes)) as jar:
+                all_packages = set()
+                for entry in jar.namelist():
+                    if entry.endswith(".class") and not entry.startswith("META-INF") and "$" not in entry:
+                        parts = entry.split("/")
+                        if len(parts) > 1:
+                            package = ".".join(parts[:-1])
+                            all_packages.add(package)
+
+            sorted_packages: list[str] = sorted(all_packages, key=lambda p: len(p.split(".")))
+
+            general_imports: list[str] = []
+            for pkg in sorted_packages:
+                if not any(pkg.startswith(parent + ".") for parent in general_imports):
+                    general_imports.append(pkg)
+
+            return general_imports
+
+        except BadZipFile:
+            logger.warning("Maven - Bad JAR file (corrupted)")
+            return []
+        except Exception as e:
+            logger.error(f"Maven - Unexpected error extracting JAR: {e}")
+            return []

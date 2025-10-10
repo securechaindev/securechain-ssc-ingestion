@@ -82,6 +82,12 @@ class MavenPackageExtractor(PackageExtractor):
         if not vendor:
             vendor = group_id.split(".")[0] if "." in group_id else group_id
 
+        import_names = []
+        if versions:
+            latest_version = versions[-1].get("name")
+            if latest_version:
+                import_names = await self.maven_service.extract_import_names(group_id, artifact_id, latest_version)
+
         pkg = MavenPackageSchema(
             group_id=group_id,
             artifact_id=artifact_id,
@@ -89,6 +95,7 @@ class MavenPackageExtractor(PackageExtractor):
             vendor=vendor or "n/a",
             repository_url=repository_url or "n/a",
             moment=datetime.now(),
+            import_names=import_names,
         )
 
         created_versions = await self.package_service.create_package_and_versions(

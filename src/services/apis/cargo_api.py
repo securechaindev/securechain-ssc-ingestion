@@ -1,11 +1,12 @@
-import io
-import re
-import tarfile
 from asyncio import sleep, to_thread
+from io import BytesIO
 from json import JSONDecodeError
+from tarfile import ReadError
+from tarfile import open as open_tarfile
 from typing import Any
 
 from aiohttp import ClientConnectorError, ContentTypeError
+from regex import MULTILINE, findall
 
 from src.cache import CacheManager
 from src.logger import logger
@@ -195,7 +196,7 @@ class CargoService:
         import_names = set()
 
         try:
-            with tarfile.open(fileobj=io.BytesIO(crate_bytes), mode="r:gz") as tar:
+            with open_tarfile(fileobj=BytesIO(crate_bytes), mode="r:gz") as tar:
                 rs_files = [m for m in tar.getmembers() if m.name.endswith(".rs")]
 
                 for member in rs_files:
@@ -214,7 +215,7 @@ class CargoService:
             import_names.add(crate_name)
             return sorted(import_names)
 
-        except tarfile.ReadError as e:
+        except ReadError as e:
             logger.error(f"Cargo - Error reading tarball for {crate_name}: {e}")
             return []
         except Exception as e:
@@ -224,47 +225,47 @@ class CargoService:
     def extract_public_items(self, crate_name: str, file_data: str) -> set[str]:
         items = set()
 
-        pub_mods = re.findall(r'\bpub\s+mod\s+(\w+)', file_data)
+        pub_mods = findall(r'\bpub\s+mod\s+(\w+)', file_data)
         for mod in pub_mods:
             items.add(f"{crate_name}::{mod}")
 
-        pub_uses = re.findall(r'\bpub\s+use\s+(?:[\w:]+::)?(\w+)', file_data)
+        pub_uses = findall(r'\bpub\s+use\s+(?:[\w:]+::)?(\w+)', file_data)
         for name in pub_uses:
             items.add(f"{crate_name}::{name}")
 
-        pub_structs = re.findall(r'\bpub\s+struct\s+(\w+)', file_data)
+        pub_structs = findall(r'\bpub\s+struct\s+(\w+)', file_data)
         for struct in pub_structs:
             items.add(f"{crate_name}::{struct}")
 
-        pub_enums = re.findall(r'\bpub\s+enum\s+(\w+)', file_data)
+        pub_enums = findall(r'\bpub\s+enum\s+(\w+)', file_data)
         for enum in pub_enums:
             items.add(f"{crate_name}::{enum}")
 
-        pub_traits = re.findall(r'\bpub\s+trait\s+(\w+)', file_data)
+        pub_traits = findall(r'\bpub\s+trait\s+(\w+)', file_data)
         for trait in pub_traits:
             items.add(f"{crate_name}::{trait}")
 
-        pub_fns = re.findall(r'^\s*pub\s+(?:const\s+|async\s+|unsafe\s+)*fn\s+(\w+)', file_data, re.MULTILINE)
+        pub_fns = findall(r'^\s*pub\s+(?:const\s+|async\s+|unsafe\s+)*fn\s+(\w+)', file_data, MULTILINE)
         for fn in pub_fns:
             items.add(f"{crate_name}::{fn}")
 
-        pub_consts = re.findall(r'\bpub\s+const\s+(\w+)', file_data)
+        pub_consts = findall(r'\bpub\s+const\s+(\w+)', file_data)
         for const in pub_consts:
             items.add(f"{crate_name}::{const}")
 
-        pub_statics = re.findall(r'\bpub\s+static\s+(\w+)', file_data)
+        pub_statics = findall(r'\bpub\s+static\s+(\w+)', file_data)
         for static in pub_statics:
             items.add(f"{crate_name}::{static}")
 
-        pub_macro_rules = re.findall(r'#\[macro_export\]\s*macro_rules!\s+(\w+)', file_data)
+        pub_macro_rules = findall(r'#\[macro_export\]\s*macro_rules!\s+(\w+)', file_data)
         for macro in pub_macro_rules:
             items.add(f"{crate_name}::{macro}")
 
-        pub_macros = re.findall(r'\bpub\s+macro\s+(\w+)', file_data)
+        pub_macros = findall(r'\bpub\s+macro\s+(\w+)', file_data)
         for macro in pub_macros:
             items.add(f"{crate_name}::{macro}")
 
-        pub_types = re.findall(r'\bpub\s+type\s+(\w+)', file_data)
+        pub_types = findall(r'\bpub\s+type\s+(\w+)', file_data)
         for type_alias in pub_types:
             items.add(f"{crate_name}::{type_alias}")
 

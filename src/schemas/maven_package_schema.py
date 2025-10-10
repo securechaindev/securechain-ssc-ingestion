@@ -14,6 +14,9 @@ class MavenPackageSchema(BaseModel):
     moment: datetime = Field(
         default_factory=datetime.now, description="Timestamp of the last update"
     )
+    import_names: list[str] = Field(
+        default_factory=list, description="List of Java package names extracted from the JAR"
+    )
 
     def to_dict(self) -> dict:
         return {
@@ -23,4 +26,5 @@ class MavenPackageSchema(BaseModel):
             "vendor": self.vendor,
             "repository_url": self.repository_url,
             "moment": self.moment,
+            "import_names": self.import_names,
         }
