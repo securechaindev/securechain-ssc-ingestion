@@ -1,10 +1,14 @@
-from asyncio import sleep
+from asyncio import sleep, to_thread
+from io import BytesIO
 from json import JSONDecodeError
+from tarfile import ReadError
+from tarfile import open as open_tarfile
 from typing import Any
 
 from aiohttp import ClientConnectorError, ContentTypeError
 
 from src.cache import CacheManager
+from src.logger import logger
 from src.session import SessionManager
 from src.utils import Orderer, RepoNormalizer
 
@@ -123,3 +127,84 @@ class NPMService:
                     return norm_url
 
         return None
+
+    async def extract_import_names(self, package_name: str, version: str) -> list[str]:
+        cache_key = f"import_names:{package_name}:{version}"
+        cached = await self.cache.get_cache(cache_key)
+        if cached:
+            return cached
+
+        metadata_url = f"{self.BASE_URL}/{package_name.replace('/', '%2F')}"
+        session = await SessionManager.get_session()
+
+        try:
+            async with session.get(metadata_url, timeout=30) as resp:
+                if resp.status != 200:
+                    logger.warning(f"NPM - Failed to get metadata for {package_name}@{version}: HTTP {resp.status}")
+                    return []
+
+                metadata = await resp.json()
+
+                versions = metadata.get("versions", {})
+                version_data = versions.get(version)
+
+                if not version_data:
+                    logger.warning(f"NPM - Version {version} not found for {package_name}")
+                    return []
+
+                tarball_url = version_data.get("dist", {}).get("tarball")
+
+                if not tarball_url:
+                    logger.warning(f"NPM - No tarball URL found for {package_name}@{version}")
+                    return []
+
+            async with session.get(tarball_url, timeout=30) as resp:
+                if resp.status != 200:
+                    logger.warning(f"NPM - Failed to download {package_name}@{version}: HTTP {resp.status}")
+                    return []
+
+                tgz_bytes = await resp.read()
+                import_names = await to_thread(self._extract_from_tarball_sync, package_name, tgz_bytes)
+
+                await self.cache.set_cache(cache_key, import_names, ttl=604800)
+                return import_names
+
+        except Exception as e:
+            logger.error(f"NPM - Error extracting import_names for {package_name}@{version}: {e}")
+            return []
+
+    def _extract_from_tarball_sync(self, package_name: str, tgz_bytes: bytes) -> list[str]:
+        import_names = set()
+
+        try:
+            with open_tarfile.open(fileobj=BytesIO(tgz_bytes), mode="r:gz") as tar:
+                for member in tar.getmembers():
+                    if member.isfile():
+                        name = member.name
+                        if name.endswith(('.js', '.mjs', '.ts')) and name.startswith('package/'):
+                            path = name[len("package/"):]
+
+                            if path.startswith("node_modules") or path.startswith("test") or "internal" in path:
+                                continue
+
+                            if path.endswith("index.js"):
+                                import_names.add(package_name)
+                            else:
+                                for ext in ['.js', '.mjs', '.ts']:
+                                    if path.endswith(ext):
+                                        module = path[:-len(ext)]
+                                        break
+                                else:
+                                    module = path
+
+                                import_name = f"{package_name}/{module}"
+                                import_names.add(import_name.replace("\\", "/"))
+
+            return sorted(import_names)
+
+        except ReadError:
+            logger.warning(f"NPM - Bad tarball file for {package_name}")
+            return []
+        except Exception as e:
+            logger.error(f"NPM - Unexpected error extracting {package_name}: {e}")
+            return []

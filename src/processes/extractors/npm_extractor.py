@@ -75,11 +75,18 @@ class NPMPackageExtractor(PackageExtractor):
         if not vendor:
             vendor = package_name.split("/")[0] if "@" in package_name else None
 
+        import_names = []
+        if versions:
+            latest_version = versions[-1].get("name")
+            if latest_version:
+                import_names = await self.npm_service.extract_import_names(package_name, latest_version)
+
         pkg = NPMPackageSchema(
             name=package_name,
             vendor=vendor,
             repository_url=repository_url or "n/a",
             moment=datetime.now(),
+            import_names=import_names,
         )
 
         created_versions = await self.package_service.create_package_and_versions(

@@ -12,6 +12,9 @@ class NPMPackageSchema(BaseModel):
     moment: datetime = Field(
         default_factory=datetime.now, description="Timestamp of the last update"
     )
+    import_names: list[str] = Field(
+        default_factory=list, description="List of module paths extracted from the NPM package"
+    )
 
     def to_dict(self) -> dict:
         return {
@@ -19,4 +22,5 @@ class NPMPackageSchema(BaseModel):
             "vendor": self.vendor,
             "repository_url": self.repository_url,
             "moment": self.moment,
+            "import_names": self.import_names,
         }
