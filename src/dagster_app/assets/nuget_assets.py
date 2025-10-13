@@ -101,7 +101,7 @@ def nuget_package_ingestion(
                 "errors": stats["errors"],
                 "ingestion_rate": MetadataValue.float(
                     (stats["new_packages_ingested"] / stats["total_in_registry"] * 100)
-                    if stats["total_in_registry"] > 0 else 0
+                    if stats["total_in_registry"] > 0 else 0.0
                 ),
             }
         )
@@ -172,7 +172,7 @@ def nuget_packages_updates(
                 "errors": stats["errors"],
                 "success_rate": MetadataValue.float(
                     (stats["packages_processed"] / (stats["packages_processed"] + stats["errors"]) * 100)
-                    if (stats["packages_processed"] + stats["errors"]) > 0 else 0
+                    if (stats["packages_processed"] + stats["errors"]) > 0 else 0.0
                 ),
             }
         )
