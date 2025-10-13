@@ -24,7 +24,7 @@ class RubyGemsService:
         self.repo_normalizer = RepoNormalizer()
 
     async def fetch_all_package_names(self) -> list[str]:
-        cached = await self.cache.get_cache("__all_packages__")
+        cached = await self.cache.get_cache("all_rubygems_packages")
         if cached:
             return cached
 
@@ -42,7 +42,7 @@ class RubyGemsService:
                 gem_names = [line.strip() for line in text.split('\n') if line.strip()]
 
                 logger.info(f"RubyGems - Fetched {len(gem_names)} gems")
-                await self.cache.set_cache("__all_packages__", gem_names, ttl=3600)
+                await self.cache.set_cache("all_rubygems_packages", gem_names, ttl=3600)
                 return gem_names
 
         except Exception as e:
@@ -61,7 +61,7 @@ class RubyGemsService:
             try:
                 async with session.get(url) as resp:
                     response = await resp.json()
-                    await self.cache.set_cache(package_name, response)
+                    await self.cache.set_cache(package_name, response, ttl=600)
                     return response
             except (ClientConnectorError, TimeoutError):
                 await sleep(5)
@@ -82,7 +82,7 @@ class RubyGemsService:
             try:
                 async with session.get(url) as resp:
                     response = await resp.json()
-                    await self.cache.set_cache(cache_key, response)
+                    await self.cache.set_cache(cache_key, response, ttl=600)
                     return response
             except (ClientConnectorError, TimeoutError):
                 await sleep(5)

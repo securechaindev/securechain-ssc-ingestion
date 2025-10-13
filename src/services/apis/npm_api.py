@@ -63,7 +63,7 @@ class NPMService:
                     if resp.status == 404:
                         return None
                     response = await resp.json()
-                    await self.cache.set_cache(package_name, response)
+                    await self.cache.set_cache(package_name, response, ttl=600)
                     return response
             except (ClientConnectorError, TimeoutError):
                 await sleep(5)

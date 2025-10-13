@@ -43,7 +43,14 @@ class PyPIService:
                 package_names = findall(pattern, html)
                 await self.cache.set_cache("all_pypi_packages", package_names, ttl=3600)
                 return package_names
-        except (ClientConnectorError, TimeoutError, Exception) as _:
+        except ClientConnectorError as e:
+            logger.error(f"PyPI - Connection error: {e}")
+            return []
+        except TimeoutError as e:
+            logger.error(f"PyPI - Timeout error: {e}")
+            return []
+        except Exception as e:
+            logger.error(f"PyPI - Unexpected error fetching package names: {e}")
             return []
 
     async def fetch_package_metadata(self, package_name: str) -> dict[str, Any] | None:
@@ -58,7 +65,7 @@ class PyPIService:
             try:
                 async with session.get(url) as resp:
                     response = await resp.json()
-                    await self.cache.set_cache(package_name, response)
+                    await self.cache.set_cache(package_name, response, ttl=600)
                     return response
             except (ClientConnectorError, TimeoutError):
                 await sleep(5)
@@ -79,7 +86,7 @@ class PyPIService:
             try:
                 async with session.get(url) as resp:
                     response = await resp.json()
-                    await self.cache.set_cache(cache_key, response)
+                    await self.cache.set_cache(cache_key, response, ttl=600)
                     return response
             except (ClientConnectorError, TimeoutError):
                 await sleep(5)

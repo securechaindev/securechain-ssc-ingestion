@@ -88,7 +88,7 @@ class CargoService:
             try:
                 async with session.get(url) as resp:
                     response = await resp.json()
-                    await self.cache.set_cache(package_name, response)
+                    await self.cache.set_cache(package_name, response, ttl=600)
                     return response
             except (ClientConnectorError, TimeoutError):
                 await sleep(5)
@@ -109,7 +109,7 @@ class CargoService:
             try:
                 async with session.get(url) as resp:
                     response = await resp.json()
-                    await self.cache.set_cache(cache_key, response)
+                    await self.cache.set_cache(cache_key, response, ttl=600)
                     return response
             except (ClientConnectorError, TimeoutError):
                 await sleep(5)

@@ -23,7 +23,7 @@ class NuGetService:
         self.repo_normalizer = RepoNormalizer()
 
     async def fetch_all_package_names(self) -> list[str]:
-        cached = await self.cache.get_cache("__all_packages__")
+        cached = await self.cache.get_cache("all_nuget_packages")
         if cached:
             return cached
 
@@ -69,7 +69,7 @@ class NuGetService:
                     continue
 
             logger.info(f"NuGet - Completed fetching {len(all_package_names)} packages")
-            await self.cache.set_cache("__all_packages__", all_package_names, ttl=3600)
+            await self.cache.set_cache("all_nuget_packages", all_package_names, ttl=3600)
             return all_package_names
 
         except Exception as e:
@@ -89,7 +89,7 @@ class NuGetService:
                         return []
                     response = await resp.json()
                     items = response.get("items", [])
-                    await self.cache.set_cache(url, items)
+                    await self.cache.set_cache(url, items, ttl=600)
                     return items
             except (ClientConnectorError, TimeoutError):
                 await sleep(5)
@@ -111,7 +111,7 @@ class NuGetService:
                     if resp.status == 404:
                         return None
                     response = await resp.json()
-                    await self.cache.set_cache(package_name, response)
+                    await self.cache.set_cache(package_name, response, ttl=600)
                     return response
             except (ClientConnectorError, TimeoutError):
                 await sleep(5)
