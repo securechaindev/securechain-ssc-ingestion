@@ -18,8 +18,8 @@ class RubyGemsService:
         self.cache: CacheManager = CacheManager(manager="rubygems")
         self.BASE_V1_URL = "https://rubygems.org/api/v1/versions"
         self.BASE_V2_URL = "https://rubygems.org/api/v2/rubygems"
-        self.SEARCH_URL = "https://rubygems.org/api/v1/gems"
         self.DOWNLOAD_URL = "https://rubygems.org/downloads"
+        self.GEMS_NAMES_URL = "https://index.rubygems.org/names"
         self.orderer = Orderer("RubyGemsPackage")
         self.repo_normalizer = RepoNormalizer()
 
@@ -31,15 +31,13 @@ class RubyGemsService:
         session = await SessionManager.get_session()
 
         try:
-            url = "https://rubygems.org/gems/list"
-
-            async with session.get(url, timeout=60) as resp:
+            async with session.get(self.GEMS_NAMES_URL, timeout=120) as resp:
                 if resp.status != 200:
                     logger.error(f"RubyGems - Failed to fetch gem list: status {resp.status}")
                     return []
 
                 text = await resp.text()
-                gem_names = [line.strip() for line in text.split('\n') if line.strip()]
+                gem_names = [line.strip() for line in text.strip().split('\n') if line.strip()]
 
                 logger.info(f"RubyGems - Fetched {len(gem_names)} gems")
                 await self.cache.set_cache("all_rubygems_packages", gem_names, ttl=3600)
