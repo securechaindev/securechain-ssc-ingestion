@@ -41,6 +41,9 @@ class LoggerManager:
     def exception(self, msg: str, *args, **kwargs):
         self.logger.exception(msg, *args, **kwargs)
 
+    def debug(self, msg: str, *args, **kwargs):
+        self.logger.debug(msg, *args, **kwargs)
+
 @lru_cache
 def get_logger() -> LoggerManager:
     return LoggerManager("logs/errors.log")
