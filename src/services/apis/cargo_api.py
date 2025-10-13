@@ -1,6 +1,9 @@
 from asyncio import sleep, to_thread
 from io import BytesIO
-from json import JSONDecodeError
+from json import JSONDecodeError, loads
+from pathlib import Path
+from shutil import rmtree
+from subprocess import run as subprocess_run
 from tarfile import ReadError
 from tarfile import open as open_tarfile
 from typing import Any
@@ -22,59 +25,82 @@ class CargoService:
         self.repo_normalizer = RepoNormalizer()
 
     async def fetch_all_package_names(self) -> list[str]:
-        cached = await self.cache.get_cache("__all_packages__")
+        cached = await self.cache.get_cache("all_cargo_packages")
         if cached:
+            logger.info(f"Cargo - Returning {len(cached)} cached package names")
             return cached
 
-        session = await SessionManager.get_session()
-        all_package_names = []
+        logger.info("Cargo - Fetching all package names from crates.io index...")
 
         try:
-            page = 1
-            per_page = 100
+            all_package_names = await to_thread(self.fetch_from_git_index)
 
-            while True:
-                url = f"{self.BASE_URL}?page={page}&per_page={per_page}"
-
-                try:
-                    async with session.get(url, timeout=30) as resp:
-                        if resp.status != 200:
-                            break
-
-                        data = await resp.json()
-                        crates = data.get("crates", [])
-
-                        if not crates:
-                            break
-
-                        for crate in crates:
-                            crate_name = crate.get("name")
-                            if crate_name:
-                                all_package_names.append(crate_name)
-
-                        if page % 1000 == 0:
-                            logger.info(f"Cargo - Fetched {len(all_package_names)} crates so far (page={page})")
-
-                        meta = data.get("meta", {})
-                        total = meta.get("total", 0)
-                        if len(all_package_names) >= total:
-                            break
-
-                        page += 1
-                        await sleep(0.1)
-
-                except Exception as e:
-                    logger.warning(f"Cargo - Error fetching page {page}: {e}")
-                    page += 1
-                    continue
-
-            logger.info(f"Cargo - Completed fetching {len(all_package_names)} crates")
-            await self.cache.set_cache("__all_packages__", all_package_names, ttl=3600)
-            return all_package_names
+            if all_package_names:
+                logger.info(f"Cargo - Successfully fetched {len(all_package_names)} crates from git index")
+                await self.cache.set_cache("all_cargo_packages", all_package_names, ttl=3600)
+                return all_package_names
+            else:
+                logger.error("Cargo - Git index fetch returned empty")
+                return []
 
         except Exception as e:
-            logger.error(f"Cargo - Fatal error in fetch_all_package_names: {e}")
+            logger.error(f"Cargo - Error fetching from git index: {e}")
             return []
+
+    def fetch_from_git_index(self) -> list[str]:
+        import tempfile
+
+        temp_dir = Path(tempfile.mkdtemp())
+        index_path = temp_dir / "crates.io-index"
+
+        try:
+            logger.info(f"Cargo - Cloning crates.io index to {index_path}...")
+
+            result = subprocess_run(
+                ["git", "clone", "--depth=1", "https://github.com/rust-lang/crates.io-index.git", str(index_path)],
+                capture_output=True,
+                text=True,
+                timeout=300
+            )
+
+            if result.returncode != 0:
+                logger.error(f"Cargo - Git clone failed: {result.stderr}")
+                return []
+
+            logger.info("Cargo - Git clone completed, extracting package names...")
+
+            package_names = set()
+
+            for json_file in index_path.rglob("*"):
+                if json_file.is_file() and not json_file.name.startswith(".") and json_file.name != "config.json":
+                    try:
+                        with open(json_file, encoding='utf-8') as f:
+                            for line in f:
+                                line = line.strip()
+                                if line:
+                                    try:
+                                        data = loads(line)
+                                        name = data.get("name")
+                                        if name:
+                                            package_names.add(name)
+                                    except Exception:
+                                        continue
+                    except Exception as e:
+                        logger.warning(f"Cargo - Error reading {json_file}: {e}")
+                        continue
+
+            logger.info(f"Cargo - Extracted {len(package_names)} package names from git index")
+            return sorted(package_names)
+
+        except Exception as e:
+            logger.error(f"Cargo - Error in _fetch_from_git_index: {e}")
+            return []
+        finally:
+            try:
+                logger.info(f"Cargo - Cleaning up temp directory {temp_dir}...")
+                rmtree(temp_dir, ignore_errors=True)
+            except Exception as e:
+                logger.warning(f"Cargo - Error cleaning up temp directory: {e}")
 
     async def fetch_package_metadata(self, package_name: str) -> dict[str, Any] | None:
         cached = await self.cache.get_cache(package_name)

@@ -246,7 +246,7 @@ Each ecosystem has unique characteristics handled by specialized API clients:
 - **NPM**: JSON document listing (`/_all_docs` endpoint)  
 - **Maven**: Solr pagination with set-based deduplication (10M artifacts → ~500k-1M packages)
 - **NuGet**: Search API with skip-based pagination
-- **Cargo**: Page-based pagination (100 per page)
+- **Cargo**: Git index cloning (`rust-lang/crates.io-index` repository with `--depth=1`)
 - **RubyGems**: Sequential pagination with rate limiting
 
 ### Import Names Extraction

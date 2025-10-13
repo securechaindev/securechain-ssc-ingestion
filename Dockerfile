@@ -22,6 +22,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 RUN apt-get update && apt-get install -y \
     libpq5 \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /opt/dagster/app/.venv /opt/dagster/app/.venv
