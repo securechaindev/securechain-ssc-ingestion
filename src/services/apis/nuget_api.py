@@ -1,4 +1,4 @@
-from asyncio import sleep, to_thread
+from asyncio import Lock, Semaphore, gather, sleep, to_thread
 from io import BytesIO
 from json import JSONDecodeError
 from typing import Any
@@ -17,7 +17,7 @@ class NuGetService:
     def __init__(self):
         self.cache: CacheManager = CacheManager(manager="nuget")
         self.BASE_URL = "https://api.nuget.org/v3/registration5-gz-semver2"
-        self.SEARCH_URL = "https://azuresearch-usnc.nuget.org/query"
+        self.INDEX_URL = "https://api.nuget.org/v3/catalog0/index.json"
         self.DOWNLOAD_URL = "https://www.nuget.org/api/v2/package"
         self.orderer = Orderer("NuGetPackage")
         self.repo_normalizer = RepoNormalizer()
@@ -28,49 +28,69 @@ class NuGetService:
             return cached
 
         session = await SessionManager.get_session()
-        all_package_names = []
+        all_packages = set()
 
         try:
-            skip = 0
-            take = 1000
+            logger.info("NuGet - Fetching all packages using catalog")
 
-            while True:
-                url = f"{self.SEARCH_URL}?skip={skip}&take={take}"
+            async with session.get(self.INDEX_URL, timeout=60) as resp:
+                if resp.status != 200:
+                    logger.error(f"NuGet - Error fetching catalog index: HTTP {resp.status}")
+                    return []
 
-                try:
-                    async with session.get(url, timeout=30) as resp:
-                        if resp.status != 200:
-                            break
+                catalog_index = await resp.json()
+                pages = catalog_index.get("items", [])
 
-                        data = await resp.json()
-                        packages = data.get("data", [])
+            logger.info(f"NuGet - Processing {len(pages):,} catalog pages")
 
-                        if not packages:
-                            break
+            semaphore = Semaphore(50)
+            pages_processed = 0
+            lock = Lock()
 
-                        for package in packages:
-                            package_id = package.get("id")
-                            if package_id:
-                                all_package_names.append(package_id)
+            async def fetch_catalog_page(page_url: str):
+                nonlocal pages_processed
 
-                        if skip % 10000 == 0 and skip > 0:
-                            logger.info(f"NuGet - Fetched {len(all_package_names)} packages so far (skip={skip})")
+                async with semaphore:
+                    try:
+                        async with session.get(page_url, timeout=120) as resp:
+                            if resp.status != 200:
+                                return
 
-                        total_hits = data.get("totalHits", 0)
-                        if skip + take >= total_hits:
-                            break
+                            page_data = await resp.json()
+                            items = page_data.get("items", [])
 
-                        skip += take
-                        await sleep(0.1)
+                            page_packages = {
+                                item.get("nuget:id")
+                                for item in items
+                                if item.get("nuget:id")
+                            }
 
-                except Exception as e:
-                    logger.warning(f"NuGet - Error fetching batch at skip={skip}: {e}")
-                    skip += take
-                    continue
+                            async with lock:
+                                all_packages.update(page_packages)
+                                pages_processed += 1
 
-            logger.info(f"NuGet - Completed fetching {len(all_package_names)} packages")
-            await self.cache.set_cache("all_nuget_packages", all_package_names, ttl=3600)
-            return all_package_names
+                                if pages_processed % 500 == 0:
+                                    logger.info(
+                                        f"NuGet - Pages processed: {pages_processed:,} | "
+                                        f"Unique packages: {len(all_packages):,}"
+                                    )
+
+                    except (TimeoutError, Exception) as e:
+                        logger.debug(f"NuGet - Error fetching catalog page: {e}")
+
+            tasks = [
+                fetch_catalog_page(page.get("@id"))
+                for page in pages
+                if page.get("@id")
+            ]
+
+            await gather(*tasks, return_exceptions=True)
+
+            package_names = sorted(all_packages)
+            logger.info(f"NuGet - Successfully fetched {len(package_names):,} unique packages")
+
+            await self.cache.set_cache("all_nuget_packages", package_names, ttl=3600)
+            return package_names
 
         except Exception as e:
             logger.error(f"NuGet - Fatal error in fetch_all_package_names: {e}")
