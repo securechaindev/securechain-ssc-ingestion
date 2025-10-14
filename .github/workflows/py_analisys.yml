@@ -23,4 +23,4 @@ jobs:
         run: uv sync --extra dev
 
       - name: Analysing the code with Ruff
-        run: uv run ruff check app
+        run: uv run ruff check src
