@@ -11,6 +11,9 @@ on:
     tags:
       - "*"
 
+permissions:
+  contents: write
+
 jobs:
   push_to_registry:
     name: Push GitHub Release
