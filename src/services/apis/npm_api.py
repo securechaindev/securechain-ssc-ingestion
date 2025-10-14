@@ -17,7 +17,7 @@ class NPMService:
     def __init__(self):
         self.cache: CacheManager = CacheManager(manager="npm")
         self.BASE_URL = "https://registry.npmjs.org"
-        self.REPLICATE_URL = "https://replicate.npmjs.com/_all_docs"
+        self.CHANGES_URL = "https://replicate.npmjs.com/_changes"
         self.orderer = Orderer("NPMService")
         self.repo_normalizer = RepoNormalizer()
 
@@ -27,26 +27,48 @@ class NPMService:
             return cached
 
         session = await SessionManager.get_session()
-        package_names = []
+        all_packages = set()
 
         try:
-            url = self.REPLICATE_URL
-            async with session.get(url) as resp:
-                if resp.status != 200:
-                    return []
+            batch_size = 10000
+            since = 0
 
-                data = await resp.json()
-                rows = data.get("rows", [])
+            logger.info(f"NPM - Fetching all packages using _changes feed (batch size: {batch_size})")
 
-                for row in rows:
-                    package_id = row.get("id")
-                    if package_id and not package_id.startswith("_design/"):
-                        package_names.append(package_id)
+            while True:
+                params = {"limit": batch_size, "since": since}
 
-                await self.cache.set_cache("all_npm_packages", package_names, ttl=3600)
-                return package_names
+                async with session.get(self.CHANGES_URL, params=params, timeout=180) as resp:
+                    if resp.status != 200:
+                        logger.warning(f"NPM - Error fetching changes: HTTP {resp.status}")
+                        break
 
-        except (ClientConnectorError, TimeoutError, JSONDecodeError, ContentTypeError, Exception):
+                    data = await resp.json()
+                    results = data.get("results", [])
+                    last_seq = data.get("last_seq")
+
+                    if not results:
+                        break
+
+                    all_packages.update(
+                        change["id"]
+                        for change in results
+                        if "id" in change and not change["id"].startswith("_")
+                    )
+
+                    if len(results) < batch_size:
+                        break
+
+                    since = last_seq or results[-1].get("seq", since)
+
+            package_names = sorted(all_packages)
+            logger.info(f"NPM - Successfully fetched {len(package_names):,} packages")
+
+            await self.cache.set_cache("all_npm_packages", package_names, ttl=3600)
+            return package_names
+
+        except (ClientConnectorError, TimeoutError, JSONDecodeError, ContentTypeError, Exception) as e:
+            logger.error(f"NPM - Error fetching package names: {e}")
             return []
 
     async def fetch_package_metadata(self, package_name: str) -> dict[str, Any] | None:
