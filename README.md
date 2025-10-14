@@ -240,14 +240,55 @@ All schedules can be enabled/disabled individually from the Dagster UI (`Automat
 
 ### Registry-Specific Implementation
 
-Each ecosystem has unique characteristics handled by specialized API clients:
+Each ecosystem has unique characteristics handled by specialized API clients with optimized extraction methods:
 
-- **PyPI**: HTML parsing with regex (`/simple/` endpoint)
-- **NPM**: JSON document listing (`/_all_docs` endpoint)  
-- **Maven**: Solr pagination with set-based deduplication (10M artifacts → ~500k-1M packages)
-- **NuGet**: Search API with skip-based pagination
-- **Cargo**: Git index cloning (`rust-lang/crates.io-index` repository with `--depth=1`)
-- **RubyGems**: Sequential pagination with rate limiting
+#### PyPI (Python)
+- **Method**: HTML parsing of Simple API (`/simple/` endpoint)
+- **Extraction**: Regex pattern matching for package links
+- **Optimization**: Single page lists all packages (~500k)
+- **Volume**: ~500,000 packages
+
+#### NPM (JavaScript/Node.js)
+- **Method**: Changes feed (`_changes` endpoint)
+- **Extraction**: Batch processing with `since` pagination (10,000 per batch)
+- **Optimization**: Efficient incremental updates, set-based deduplication
+- **Volume**: ~3,000,000 packages
+- **Key Feature**: Real-time change tracking
+
+#### Maven (Java)
+- **Method**: Docker-based Lucene index extraction
+- **Process**:
+  1. Downloads Maven Central index (`nexus-maven-repository-index.gz` ~400-500 MB)
+  2. Expands index using `indexer-cli` tool (~10-15 minutes)
+  3. Reads Lucene index with PyLucene inside Docker container
+  4. Extracts unique `groupId:artifactId` combinations
+  5. Returns deduplicated package list via JSON stdout
+- **Docker Image**: `coady/pylucene:9` with Java 17
+- **Container**: Ephemeral (runs with `--rm`, auto-cleanup)
+- **Duration**: 80-90 minutes per execution
+- **Optimization**: Set-based deduplication (10M artifacts → ~500k-1M unique packages)
+- **Volume**: ~500,000-1,000,000 unique packages
+- **No Volumes**: All processing happens inside temporary container
+
+#### NuGet (.NET)
+- **Method**: Catalog API (`catalog0/index.json`)
+- **Extraction**: Parallel processing of catalog pages with semaphore (50 concurrent)
+- **Optimization**: `asyncio.gather()` for concurrent page fetching
+- **Volume**: ~400,000 packages
+- **Key Feature**: Paginated catalog with timestamp-based ordering
+
+#### Cargo (Rust)
+- **Method**: Git index cloning (`rust-lang/crates.io-index`)
+- **Extraction**: Parse individual JSON files per crate
+- **Optimization**: Shallow clone (`--depth=1`) to minimize download
+- **Volume**: ~150,000 crates
+
+#### RubyGems (Ruby)
+- **Method**: Single request to names index
+- **Extraction**: Plain text file with one gem per line
+- **Optimization**: Single HTTP request fetches all gem names (~180k)
+- **Volume**: ~180,000 gems
+- **Endpoint**: `https://index.rubygems.org/names`
 
 ### Import Names Extraction
 

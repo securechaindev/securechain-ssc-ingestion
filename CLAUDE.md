@@ -341,46 +341,104 @@ def pypi_packages_updates(
 - **Cache Key**: `all_pypi_packages`
 
 ### NPM Ingestion
-- **Endpoint**: `https://replicate.npmjs.com/_all_docs`
-- **Method**: JSON document listing
+- **Endpoint**: `https://replicate.npmjs.com/_changes`
+- **Method**: Changes feed with batch pagination
 - **Volume**: ~3,000,000 packages
-- **Deduplication**: Filters `_design/` documents
-- **Normalization**: Converts to lowercase
-- **Cache Key**: `all_npm_packages`
+- **Batch Size**: 10,000 packages per request
+- **Deduplication**: Uses `set` for efficient lookups
+- **Pagination**: `since` parameter for sequential batches
+- **Optimization**:
+  - Parallel processing with `asyncio.gather()`
+  - Set-based deduplication (O(1) lookup)
+  - Filters deleted packages (`deleted: true`)
+  - Single request per batch (vs multiple requests)
+- **Cache Key**: `all_npm_packages` (1 hour TTL)
 
-### Maven Ingestion
-- **Endpoint**: `https://search.maven.org/solrsearch/select?q=*:*`
-- **Method**: Solr pagination (1000 per batch)
-- **Volume**: ~10,000,000 artifacts → ~500,000-1,000,000 unique packages
-- **Deduplication**: Uses `set` for O(1) lookup (group_id:artifact_id combinations)
-- **Note**: Each version is a separate artifact, we extract unique group_id:artifact_id pairs
-- **Optimization**: 
-  - Set-based deduplication (O(1) vs O(n))
-  - Progress logs every 10k artifacts
-  - 0.1s delay between batches to avoid rate limiting
-- **Cache Key**: `all_mvn_packages`
-
-**Maven Deduplication Example**:
+**NPM Changes Feed Example**:
 ```python
-seen_packages = set()  # O(1) lookup
-for doc in docs:
-    package_key = f"{group_id}:{artifact_id}"
-    if package_key not in seen_packages:
-        seen_packages.add(package_key)
-        all_packages.append({...})
+# Request: GET /_changes?since=0&limit=10000
+# Response: {
+#   "results": [
+#     {"id": "package-name", "changes": [...], "deleted": false},
+#     ...
+#   ],
+#   "last_seq": "10000-xxx"
+# }
+# Next request: GET /_changes?since=10000-xxx&limit=10000
 ```
 
+### Maven Ingestion
+- **Method**: Docker-based Lucene index extraction
+- **Volume**: ~500,000-1,000,000 unique packages (from ~10M artifacts)
+- **Container**: Ephemeral Docker container (`coady/pylucene:9`)
+- **Process**:
+  1. Downloads Maven Central index (`nexus-maven-repository-index.gz`, ~400-500 MB)
+  2. Expands Lucene index using `indexer-cli` tool (~10-15 minutes)
+  3. Reads index with PyLucene to extract `groupId:artifactId` combinations
+  4. Deduplicates using `set` (O(1) lookup)
+  5. Returns JSON array via stdout
+- **Duration**: 80-90 minutes per execution
+- **Optimization**: 
+  - Set-based deduplication (O(1) vs O(n))
+  - Runs in isolated Docker container with `--rm` (auto-cleanup)
+  - No volume mounting (all processing inside container)
+  - Progress logs every 100k documents
+- **Cache Key**: `all_mvn_packages` (1 hour TTL)
+- **Files**:
+  - `src/utils/maven/Dockerfile.maven` - PyLucene + Java 17 image
+  - `src/utils/maven/automate_maven_extraction.py` - Extraction script
+
+**Maven Container Architecture**:
+```python
+# In maven_api.py
+async def fetch_all_package_names(self) -> list[str]:
+    # Build Docker image from Dockerfile.maven
+    # Run ephemeral container: docker run --rm maven-extractor
+    # Capture JSON output from stdout
+    # Parse and return package list
+    
+# Container runs automate_maven_extraction.py which:
+# 1. Downloads indexer-cli.jar (if needed)
+# 2. Downloads nexus-maven-repository-index.gz (always fresh)
+# 3. Expands index to /nexus-index-expanded
+# 4. Extracts packages using PyLucene
+# 5. Prints JSON to stdout (for parent process)
+# 6. Logs to stderr (for debugging)
+# 7. Cleans up temporary files
+```
+
+**No Shared Volumes**:
+- All files stay inside container
+- Container auto-deleted after completion (`--rm`)
+- No artifacts left on host system
+- Fresh index downloaded on each run
+
 ### NuGet Ingestion
-- **Endpoint**: `https://azuresearch-usnc.nuget.org/query`
-- **Method**: Search API with pagination (1000 per batch, skip-based)
+- **Endpoint**: `https://api.nuget.org/v3/catalog0/index.json`
+- **Method**: Catalog-based extraction with parallel page processing
 - **Volume**: ~400,000 packages
-- **Deduplication**: Not needed (Search API returns unique packages)
-- **Rate Limiting**: 0.5s delay between requests
+- **Process**:
+  1. Fetches catalog index containing page URLs
+  2. Processes all pages in parallel with `asyncio.gather()`
+  3. Each page contains package entries with commit timestamps
+  4. Extracts package IDs from each entry
+- **Concurrency**: Semaphore(50) to limit concurrent requests
+- **Optimization**:
+  - Parallel page fetching reduces total time significantly
+  - Set-based deduplication for package IDs
+  - Lock protection for thread-safe set operations
 - **Special Features**:
-  - Extracts vendor from `authors` field (first author)
+  - Extracts vendor from package metadata
   - Fetches version-specific metadata via catalog service
   - Supports version listing and requirements extraction
-- **Cache Key**: `all_nuget_packages`
+- **Cache Key**: `all_nuget_packages` (1 hour TTL)
+
+**NuGet Catalog Structure**:
+```python
+# Catalog Index: { "items": [{"@id": "page_url"}, ...] }
+# Each Page: { "items": [{"nuget:id": "PackageName"}, ...] }
+# Parallel processing: asyncio.gather(*[fetch_page(url) for url in pages])
+```
 
 ### Cargo Ingestion
 - **Endpoint**: `https://crates.io/api/v1/crates`
@@ -392,13 +450,26 @@ for doc in docs:
 - **Cache Key**: `all_cargo_packages`
 
 ### RubyGems Ingestion
-- **Endpoint**: `https://rubygems.org/api/v1/gems.json`
-- **Method**: Sequential page-based pagination
+- **Endpoint**: `https://index.rubygems.org/names`
+- **Method**: Single HTTP request for complete gem list
 - **Volume**: ~180,000 gems
-- **Deduplication**: Not needed (API returns unique gems)
-- **Rate Limiting**: 0.2s delay between requests
-- **Termination**: Continues until empty response
-- **Cache Key**: `all_rubygems_packages`
+- **Format**: Plain text file with one gem name per line
+- **Optimization**: 
+  - Single request fetches all gems (no pagination needed)
+  - Simple text parsing (split by newline)
+  - Fastest method among all registries
+- **Deduplication**: Not needed (index contains unique gems)
+- **Cache Key**: `all_rubygems_packages` (1 hour TTL)
+
+**RubyGems Names Index Example**:
+```text
+# Single GET request returns:
+gem-name-1
+gem-name-2
+gem-name-3
+...
+(~180k lines)
+```
 
 ## Redis Queue Processor Asset
 
