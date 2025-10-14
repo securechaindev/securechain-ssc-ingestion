@@ -40,17 +40,21 @@ def maven_package_ingestion(
             skipped_packages = 0
             error_count = 0
 
-            all_packages = await maven_svc.fetch_all_packages()
+            logger.info("Maven - Fetching all package names from Maven Central...")
+            context.log.info("Maven - Fetching all package names from Maven Central...")
+
+            all_packages = await maven_svc.fetch_all_package_names()
             total_packages = len(all_packages)
 
             logger.info(f"Maven - Found {total_packages} packages in Maven Central")
             context.log.info(f"Maven - Found {total_packages} packages in Maven Central")
 
-            for idx, package_info in enumerate(all_packages, 1):
+            for idx, package_name in enumerate(all_packages, 1):
                 try:
-                    group_id = package_info.get("group_id")
-                    artifact_id = package_info.get("artifact_id")
-                    package_name = package_info.get("name")
+                    if ':' not in package_name:
+                        continue
+
+                    group_id, artifact_id = package_name.split(':', 1)
 
                     if not group_id or not artifact_id:
                         continue

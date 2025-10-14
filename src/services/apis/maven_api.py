@@ -1,6 +1,8 @@
 from asyncio import sleep, to_thread
 from io import BytesIO
-from json import JSONDecodeError
+from json import JSONDecodeError, loads
+from pathlib import Path
+from subprocess import TimeoutExpired, run
 from typing import Any
 from zipfile import BadZipFile, ZipFile
 
@@ -20,69 +22,89 @@ class MavenService:
         self.orderer = Orderer("MavenService")
         self.repo_normalizer = RepoNormalizer()
 
-    async def fetch_all_packages(self) -> list[dict[str, str]]:
+    async def fetch_all_package_names(self) -> list[str]:
         cached = await self.cache.get_cache("all_mvn_packages")
         if cached:
+            logger.info(f"Maven - Using cached package list ({len(cached):,} packages)")
             return cached
 
-        session = await SessionManager.get_session()
-        all_packages = []
-        seen_packages = set()
+        maven_utils_dir = Path(__file__).parent.parent.parent / "utils" / "maven"
 
+        logger.info("Maven - Generating package list using Lucene index extraction...")
         try:
-            batch_size = 1000
-            start = 0
-
-            while True:
-                url = f"{self.BASE_URL}?q=*:*&core=gav&rows={batch_size}&start={start}&wt=json"
-
-                try:
-                    async with session.get(url, timeout=30) as resp:
-                        if resp.status != 200:
-                            break
-
-                        data = await resp.json()
-                        response = data.get("response", {})
-                        docs = response.get("docs", [])
-                        num_found = response.get("numFound", 0)
-
-                        if not docs:
-                            break
-
-                        for doc in docs:
-                            group_id = doc.get("g")
-                            artifact_id = doc.get("a")
-                            if group_id and artifact_id:
-                                package_key = f"{group_id}:{artifact_id}"
-                                if package_key not in seen_packages:
-                                    seen_packages.add(package_key)
-                                    all_packages.append({
-                                        "group_id": group_id,
-                                        "artifact_id": artifact_id,
-                                        "name": package_key
-                                    })
-
-                        if start % 10000 == 0 and start > 0:
-                            logger.info(f"Maven - Found {len(all_packages)} unique packages from {start}/{num_found} artifacts")
-
-                        if start + batch_size >= num_found:
-                            break
-
-                        start += batch_size
-
-                        await sleep(0.1)
-
-                except Exception as e:
-                    logger.warning(f"Maven - Error fetching batch at start={start}: {e}")
-                    start += batch_size
-                    continue
-
-            logger.info(f"Maven - Completed: {len(all_packages)} unique packages from {num_found} total artifacts")
-            await self.cache.set_cache("all_mvn_packages", all_packages, ttl=3600)
-            return all_packages
-
+            all_packages = await to_thread(self.run_maven_extraction, maven_utils_dir)
+            if all_packages:
+                logger.info(f"Maven - Extracted {len(all_packages):,} packages from Maven Central")
+                await self.cache.set_cache("all_mvn_packages", all_packages, ttl=3600)
+                return all_packages
+            else:
+                logger.warning("Maven - Extraction returned empty list")
         except Exception as e:
-            logger.error(f"Maven - Fatal error in fetch_all_packages: {e}")
+            logger.error(f"Maven - Error running extraction: {e}")
+
+        return []
+
+    def run_maven_extraction(self, maven_utils_dir: Path) -> list[str]:
+        try:
+            dockerfile = maven_utils_dir / "Dockerfile.maven"
+            if not dockerfile.exists():
+                logger.error(f"Maven - Dockerfile not found at {dockerfile}")
+                return []
+
+            docker_image = "maven-extractor"
+
+            logger.info("Maven - Building Docker image...")
+            build_cmd = [
+                "docker", "build",
+                "-t", docker_image,
+                "-f", str(dockerfile),
+                str(maven_utils_dir)
+            ]
+
+            build_result = run(
+                build_cmd,
+                capture_output=True,
+                text=True,
+                timeout=600
+            )
+
+            if build_result.returncode != 0:
+                logger.error(f"Maven - Docker build failed: {build_result.stderr}")
+                return []
+
+            logger.info("Maven - Running extraction container (this may take 1-2 hours)...")
+
+            run_cmd = ["docker", "run", "--rm", docker_image]
+
+            run_result = run(
+                run_cmd,
+                capture_output=True,
+                text=True,
+                timeout=10800
+            )
+
+            if run_result.returncode != 0:
+                logger.error(f"Maven - Extraction failed: {run_result.stderr}")
+                return []
+
+            if run_result.stderr:
+                for line in run_result.stderr.strip().split('\n')[-5:]:
+                    if line:
+                        logger.info(f"Maven - {line}")
+
+            try:
+                all_packages = loads(run_result.stdout)
+                logger.info(f"Maven - Successfully parsed {len(all_packages):,} packages")
+                return all_packages
+            except JSONDecodeError as e:
+                logger.error(f"Maven - Failed to parse JSON output: {e}")
+                return []
+
+        except TimeoutExpired:
+            logger.error("Maven - Extraction timeout (exceeded 2 hours)")
+            return []
+        except Exception as e:
+            logger.error(f"Maven - Unexpected error: {e}")
             return []
 
     async def fetch_package_metadata(self, group_id: str, artifact_id: str) -> dict[str, Any] | None:

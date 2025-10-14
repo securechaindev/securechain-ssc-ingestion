@@ -1,0 +1,10 @@
+FROM coady/pylucene:9
+
+WORKDIR /workspace
+
+COPY automate_maven_extraction.py .
+
+RUN apt-get update && apt-get install -y openjdk-17-jre curl && \
+    pip install --no-cache-dir lupyne
+
+CMD ["python3", "automate_maven_extraction.py"]
