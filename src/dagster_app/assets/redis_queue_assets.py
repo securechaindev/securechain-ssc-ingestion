@@ -34,7 +34,7 @@ from src.schemas import (
     PyPIPackageSchema,
     RubyGemsPackageSchema,
 )
-from src.utils.redis_queue import RedisQueue
+from src.utils import RedisQueue
 
 
 @asset(
