@@ -17,8 +17,8 @@ class Orderer:
     ):
         self.node_type = node_type
 
-    async def order_versions(self, versions: list[dict[str,str]]) -> list[dict]:
-        version_type: Version = await self.get_version_type()
+    def order_versions(self, versions: list[dict[str,str]]) -> list[dict]:
+        version_type: Version = self.get_version_type()
         final_versions: list[dict] = []
         univers_versions: list[tuple[Version, dict[str, Any]]] = []
         for version in versions:
@@ -38,7 +38,7 @@ class Orderer:
             })
         return final_versions
 
-    async def get_version_type(self) -> Version:
+    def get_version_type(self) -> Version:
         return {
             "PyPIPackage": PypiVersion,
             "NPMPackage": SemverVersion,

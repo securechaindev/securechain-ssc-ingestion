@@ -10,10 +10,10 @@ class RepoNormalizer:
             "www.github.com", "www.gitlab.com", "www.bitbucket.org",
         }
 
-    async def normalize(self, raw_url: str | None) -> str | None:
+    def normalize(self, raw_url: str | None) -> str | None:
         if not raw_url:
             return None
-        u = await self.normalize_git(raw_url)
+        u = self.normalize_git(raw_url)
         parsed = urlparse(u)
         if not parsed.scheme:
             u = "https://" + u
@@ -29,7 +29,7 @@ class RepoNormalizer:
         self.normalized_url = clean
         return clean
 
-    async def normalize_git(self, raw_url:str) -> str:
+    def normalize_git(self, raw_url:str) -> str:
         u = raw_url.strip()
         if u.startswith("git+"):
             u = u[4:]
@@ -43,7 +43,7 @@ class RepoNormalizer:
             u = "https://" + u[len("git://"):]
         return u
 
-    async def check(self) -> bool:
+    def check(self) -> bool:
         if not self.normalized_url:
             return False
         parsed = urlparse(self.normalized_url.strip())

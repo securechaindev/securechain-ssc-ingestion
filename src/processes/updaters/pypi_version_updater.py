@@ -25,7 +25,7 @@ class PyPIVersionUpdater:
 
         metadata = await self.pypi_service.fetch_package_metadata(package_name)
         versions = await self.pypi_service.get_versions(metadata)
-        repository_url = await self.pypi_service.get_repo_url(metadata)
+        repository_url = self.pypi_service.get_repo_url(metadata)
         vendor = repository_url.split("/")[-2] if repository_url else None
 
         count = await self.version_service.count_number_of_versions_by_package("PyPIPackage", package_name)

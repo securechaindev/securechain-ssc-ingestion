@@ -62,7 +62,7 @@ class CargoPackageExtractor(PackageExtractor):
     ) -> None:
         metadata = await self.cargo_service.fetch_package_metadata(package_name)
         versions = await self.cargo_service.get_versions(metadata)
-        repository_url = await self.cargo_service.get_repo_url(metadata)
+        repository_url = self.cargo_service.get_repo_url(metadata)
         vendor = repository_url.split("/")[-2] if repository_url else None
 
         if not versions:
@@ -106,6 +106,6 @@ class CargoPackageExtractor(PackageExtractor):
 
     async def extract_packages(self, parent_package_name: str, version: dict[str, Any]) -> None:
         metadata = await self.cargo_service.fetch_package_version_metadata(parent_package_name, version.get("name"))
-        requirement = await self.cargo_service.get_package_requirements(metadata)
+        requirement = self.cargo_service.get_package_requirements(metadata)
         if requirement:
             await self.generate_packages(requirement, version.get("id"), parent_package_name)

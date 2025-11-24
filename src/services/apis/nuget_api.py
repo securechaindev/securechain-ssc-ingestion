@@ -167,7 +167,7 @@ class NuGetService:
         if not metadata:
             return [], []
         raw_versions, requirements = await self.extract_raw_versions_and_requirements(metadata)
-        versions = await self.orderer.order_versions(raw_versions)
+        versions = self.orderer.order_versions(raw_versions)
         return versions, requirements
 
     async def get_repo_url(self, metadata: dict[str, Any]) -> str | None:
@@ -181,8 +181,8 @@ class NuGetService:
                 raw_url = catalog_entry.get("repositoryUrl")
 
                 if raw_url:
-                    norm_url = await self.repo_normalizer.normalize(raw_url)
-                    if norm_url and await self.repo_normalizer.check():
+                    norm_url = self.repo_normalizer.normalize(raw_url)
+                    if norm_url and self.repo_normalizer.check():
                         return norm_url
 
         return None

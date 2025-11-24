@@ -2,20 +2,20 @@ class PyPIConstraintsParser:
     def __init__(self):
         pass
 
-    async def parse(self, constraints: str) -> str:
+    def parse(self, constraints: str) -> str:
         if constraints:
             ctcs = [
                 f"!= {ctc.split(' ')[-1]}" if "||" in ctc else ctc.strip()
                 for ctc in constraints.split(",")
             ]
             if ctcs:
-                clean_ctcs = await self.clean(ctcs)
+                clean_ctcs = self.clean(ctcs)
                 if clean_ctcs:
                     return clean_ctcs
         return "any"
 
 
-    async def clean(self, raw_constraints: list[str]) -> str:
+    def clean(self, raw_constraints: list[str]) -> str:
         constraints = []
         for raw_constraint in raw_constraints:
             try:
@@ -85,7 +85,7 @@ class PyPIConstraintsParser:
                 return "any"
         return ", ".join(constraints)
 
-    async def get_first_position(self, data: str, operators: list[str]) -> int:
+    def get_first_position(self, data: str, operators: list[str]) -> int:
         if not any(operator in data for operator in operators):
             return len(data)
         for index, char in enumerate(data):

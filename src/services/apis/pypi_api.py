@@ -94,7 +94,7 @@ class PyPIService:
                 return None
         return None
 
-    async def extract_raw_versions(self, metadata: dict[str, Any]) -> list[dict[str, Any]]:
+    def extract_raw_versions(self, metadata: dict[str, Any]) -> list[dict[str, Any]]:
         raw_versions = []
         for version, files in (metadata.get("releases") or {}).items():
             upload_time = None
@@ -107,28 +107,28 @@ class PyPIService:
     async def get_versions(self, metadata: dict[str, Any]) -> list[dict[str, Any]]:
         if not metadata:
             return []
-        raw = await self.extract_raw_versions(metadata)
-        return await self.orderer.order_versions(raw)
+        raw = self.extract_raw_versions(metadata)
+        return self.orderer.order_versions(raw)
 
-    async def get_repo_url(self, metadata: dict[str, Any]) -> str | None:
+    def get_repo_url(self, metadata: dict[str, Any]) -> str | None:
         if not metadata:
             return None
 
         info = metadata.get("info", {})
         raw_url = info.get("home_page")
-        norm_url = await self.repo_normalizer.normalize(raw_url)
-        if await self.repo_normalizer.check():
+        norm_url = self.repo_normalizer.normalize(raw_url)
+        if self.repo_normalizer.check():
             return norm_url
 
         project_urls = info.get("project_urls") or {}
         for _, raw_url in project_urls.items():
-            norm_url = await self.repo_normalizer.normalize(raw_url)
-            if await self.repo_normalizer.check():
+            norm_url = self.repo_normalizer.normalize(raw_url)
+            if self.repo_normalizer.check():
                 return norm_url
 
         return None
 
-    async def get_package_requirements(self, metadata: dict[str, Any]) -> dict[str, Any]:
+    def get_package_requirements(self, metadata: dict[str, Any]) -> dict[str, Any]:
         requirements: dict[str, Any] = {}
 
         for dependency in metadata.get("info", {}).get("requires_dist", []) or []:
@@ -150,13 +150,13 @@ class PyPIService:
                     continue
 
             if "[" in data[0]:
-                pos_1 = await self.pypi_constraints_parser.get_first_position(data[0], ["["])
-                pos_2 = await self.pypi_constraints_parser.get_first_position(data[0], ["]"]) + 1
+                pos_1 = self.pypi_constraints_parser.get_first_position(data[0], ["["])
+                pos_2 = self.pypi_constraints_parser.get_first_position(data[0], ["]"]) + 1
                 data[0] = data[0][:pos_1] + data[0][pos_2:]
 
             data = data[0].replace("(", "").replace(")", "").replace(" ", "").replace("'", "")
-            pos = await self.pypi_constraints_parser.get_first_position(data, ["<", ">", "=", "!", "~"])
-            requirements[data[:pos].lower()] = await self.pypi_constraints_parser.parse(data[pos:])
+            pos = self.pypi_constraints_parser.get_first_position(data, ["<", ">", "=", "!", "~"])
+            requirements[data[:pos].lower()] = self.pypi_constraints_parser.parse(data[pos:])
 
         return requirements
 

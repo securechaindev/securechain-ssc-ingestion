@@ -18,16 +18,16 @@ class Attributor:
                 for severity in vuln["severity"]:
                     if severity["type"] == "CVSS_V3":
                         self.impacts.append(severity["base_score"])
-        version["mean"] = await self.mean()
-        version["weighted_mean"] = await self.weighted_mean()
+        version["mean"] = self.mean()
+        version["weighted_mean"] = self.weighted_mean()
         return version
 
-    async def mean(self) -> float:
+    def mean(self) -> float:
         if self.impacts:
             return round(sum(self.impacts) / len(self.impacts), 2)
         return 0.0
 
-    async def weighted_mean(self) -> float:
+    def weighted_mean(self) -> float:
         if self.impacts:
             return round(sum(var**2 * 0.1 for var in self.impacts) / sum(var * 0.1 for var in self.impacts), 2)
         return 0.0

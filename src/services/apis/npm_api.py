@@ -93,7 +93,7 @@ class NPMService:
                 return None
         return None
 
-    async def extract_raw_versions_and_requirements(self, metadata: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    def extract_raw_versions_and_requirements(self, metadata: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         raw_versions = []
         requirements = []
         versions_data = metadata.get("versions", {})
@@ -113,11 +113,11 @@ class NPMService:
     async def get_versions_and_requirements(self, metadata: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         if not metadata:
             return [], []
-        raw_versions, requirements = await self.extract_raw_versions_and_requirements(metadata)
-        versions = await self.orderer.order_versions(raw_versions)
+        raw_versions, requirements = self.extract_raw_versions_and_requirements(metadata)
+        versions = self.orderer.order_versions(raw_versions)
         return versions, requirements
 
-    async def get_repo_url(self, metadata: dict[str, Any]) -> str | None:
+    def get_repo_url(self, metadata: dict[str, Any]) -> str | None:
         if not metadata:
             return None
 
@@ -130,22 +130,22 @@ class NPMService:
                 raw_url = repository
 
             if raw_url:
-                norm_url = await self.repo_normalizer.normalize(raw_url)
-                if await self.repo_normalizer.check():
+                norm_url = self.repo_normalizer.normalize(raw_url)
+                if self.repo_normalizer.check():
                     return norm_url
 
         homepage = metadata.get("homepage")
         if homepage:
-            norm_url = await self.repo_normalizer.normalize(homepage)
-            if await self.repo_normalizer.check():
+            norm_url = self.repo_normalizer.normalize(homepage)
+            if self.repo_normalizer.check():
                 return norm_url
 
         bugs = metadata.get("bugs")
         if bugs and isinstance(bugs, dict):
             bugs_url = bugs.get("url")
             if bugs_url:
-                norm_url = await self.repo_normalizer.normalize(bugs_url)
-                if await self.repo_normalizer.check():
+                norm_url = self.repo_normalizer.normalize(bugs_url)
+                if self.repo_normalizer.check():
                     return norm_url
 
         return None

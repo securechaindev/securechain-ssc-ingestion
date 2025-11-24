@@ -143,7 +143,7 @@ class CargoService:
                 return None
         return None
 
-    async def extract_raw_versions(self, metadata: dict[str, Any]) -> list[dict[str, Any]]:
+    def extract_raw_versions(self, metadata: dict[str, Any]) -> list[dict[str, Any]]:
         raw_versions = []
         for version_data in metadata.get("versions", []):
             version = version_data.get("num")
@@ -155,10 +155,10 @@ class CargoService:
     async def get_versions(self, metadata: dict[str, Any]) -> list[dict[str, Any]]:
         if not metadata:
             return []
-        raw = await self.extract_raw_versions(metadata)
-        return await self.orderer.order_versions(raw)
+        raw = self.extract_raw_versions(metadata)
+        return self.orderer.order_versions(raw)
 
-    async def get_repo_url(self, metadata: dict[str, Any]) -> str | None:
+    def get_repo_url(self, metadata: dict[str, Any]) -> str | None:
         if not metadata:
             return None
 
@@ -166,19 +166,19 @@ class CargoService:
         raw_url = crate_data.get("repository")
 
         if raw_url:
-            norm_url = await self.repo_normalizer.normalize(raw_url)
-            if await self.repo_normalizer.check():
+            norm_url = self.repo_normalizer.normalize(raw_url)
+            if self.repo_normalizer.check():
                 return norm_url
 
         homepage = crate_data.get("homepage")
         if homepage:
-            norm_url = await self.repo_normalizer.normalize(homepage)
-            if await self.repo_normalizer.check():
+            norm_url = self.repo_normalizer.normalize(homepage)
+            if self.repo_normalizer.check():
                 return norm_url
 
         return None
 
-    async def get_package_requirements(self, metadata: dict[str, Any]) -> dict[str, Any]:
+    def get_package_requirements(self, metadata: dict[str, Any]) -> dict[str, Any]:
         requirements: dict[str, Any] = {}
 
         if not metadata:

@@ -25,7 +25,7 @@ class RubyGemsVersionUpdater:
 
         metadata = await self.rubygems_service.fetch_package_metadata(package_name)
         versions = await self.rubygems_service.get_versions(metadata)
-        repository_url = await self.rubygems_service.get_repo_url(metadata)
+        repository_url = self.rubygems_service.get_repo_url(metadata)
         vendor = repository_url.split("/")[-2] if repository_url else None
 
         count = await self.version_service.count_number_of_versions_by_package("RubyGemsPackage", package_name)

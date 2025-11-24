@@ -61,7 +61,7 @@ class PyPIPackageExtractor(PackageExtractor):
     ) -> None:
         metadata = await self.pypi_service.fetch_package_metadata(package_name)
         versions = await self.pypi_service.get_versions(metadata)
-        repository_url = await self.pypi_service.get_repo_url(metadata)
+        repository_url = self.pypi_service.get_repo_url(metadata)
         vendor = repository_url.split("/")[-2] if repository_url else None
 
         if not versions:
@@ -102,6 +102,6 @@ class PyPIPackageExtractor(PackageExtractor):
 
     async def extract_packages(self, parent_package_name: str, version: dict[str, Any]) -> None:
         metadata = await self.pypi_service.fetch_package_version_metadata(parent_package_name, version.get("name"))
-        requirement = await self.pypi_service.get_package_requirements(metadata)
+        requirement = self.pypi_service.get_package_requirements(metadata)
         if requirement:
             await self.generate_packages(requirement, version.get("id"), parent_package_name)

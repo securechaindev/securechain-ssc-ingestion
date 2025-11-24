@@ -25,7 +25,7 @@ class NPMVersionUpdater:
 
         metadata = await self.npm_service.fetch_package_metadata(package_name)
         versions, requirements = await self.npm_service.get_versions_and_requirements(metadata)
-        repository_url = await self.npm_service.get_repo_url(metadata)
+        repository_url = self.npm_service.get_repo_url(metadata)
         vendor = repository_url.split("/")[-2] if repository_url else None
 
         count = await self.version_service.count_number_of_versions_by_package("NPMPackage", package_name)
