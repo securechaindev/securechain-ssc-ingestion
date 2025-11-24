@@ -3,11 +3,11 @@ from typing import Any
 
 from dagster import AssetExecutionContext, MetadataValue, Output, asset
 
-from src.dagster_app.resources import (
-    AttributorResource,
-    PackageServiceResource,
-    PyPIServiceResource,
-    VersionServiceResource,
+from src.dependencies import (
+    get_attributor,
+    get_package_service,
+    get_pypi_service,
+    get_version_service,
 )
 from src.logger import logger
 from src.processes.extractors import PyPIPackageExtractor
@@ -22,18 +22,14 @@ from src.schemas import PyPIPackageSchema
 )
 def pypi_package_ingestion(
     context: AssetExecutionContext,
-    pypi_service: PyPIServiceResource,
-    package_service: PackageServiceResource,
-    version_service: VersionServiceResource,
-    attributor: AttributorResource,
 ) -> Output[dict[str, Any]]:
     try:
         logger.info("Starting PyPI package ingestion process")
 
-        pypi_svc = pypi_service.get_service()
-        package_svc = package_service.get_service()
-        version_svc = version_service.get_service()
-        attr = attributor.get_attributor()
+        pypi_svc = get_pypi_service()
+        package_svc = get_package_service()
+        version_svc = get_version_service()
+        attr = get_attributor()
 
         async def _run():
             new_packages = 0
@@ -116,18 +112,14 @@ def pypi_package_ingestion(
 )
 def pypi_packages_updates(
     context: AssetExecutionContext,
-    pypi_service: PyPIServiceResource,
-    package_service: PackageServiceResource,
-    version_service: VersionServiceResource,
-    attributor: AttributorResource,
 ) -> Output[dict[str, Any]]:
     try:
         logger.info("Starting PyPI package version update process")
 
-        pypi_svc = pypi_service.get_service()
-        package_svc = package_service.get_service()
-        version_svc = version_service.get_service()
-        attr = attributor.get_attributor()
+        pypi_svc = get_pypi_service()
+        package_svc = get_package_service()
+        version_svc = get_version_service()
+        attr = get_attributor()
 
         updater = PyPIVersionUpdater(pypi_svc, package_svc, version_svc, attr)
 

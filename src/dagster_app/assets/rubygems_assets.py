@@ -3,11 +3,11 @@ from typing import Any
 
 from dagster import AssetExecutionContext, MetadataValue, Output, asset
 
-from src.dagster_app.resources import (
-    AttributorResource,
-    PackageServiceResource,
-    RubyGemsServiceResource,
-    VersionServiceResource,
+from src.dependencies import (
+    get_attributor,
+    get_package_service,
+    get_rubygems_service,
+    get_version_service,
 )
 from src.logger import logger
 from src.processes.extractors import RubyGemsPackageExtractor
@@ -22,18 +22,14 @@ from src.schemas import RubyGemsPackageSchema
 )
 def rubygems_package_ingestion(
     context: AssetExecutionContext,
-    rubygems_service: RubyGemsServiceResource,
-    package_service: PackageServiceResource,
-    version_service: VersionServiceResource,
-    attributor: AttributorResource,
 ) -> Output[dict[str, Any]]:
     try:
         logger.info("Starting RubyGems package ingestion process")
 
-        rubygems_svc = rubygems_service.get_service()
-        package_svc = package_service.get_service()
-        version_svc = version_service.get_service()
-        attr = attributor.get_attributor()
+        rubygems_svc = get_rubygems_service()
+        package_svc = get_package_service()
+        version_svc = get_version_service()
+        attr = get_attributor()
 
         async def _run():
             new_packages = 0
@@ -118,18 +114,14 @@ def rubygems_package_ingestion(
 )
 def rubygems_packages_updates(
     context: AssetExecutionContext,
-    rubygems_service: RubyGemsServiceResource,
-    package_service: PackageServiceResource,
-    version_service: VersionServiceResource,
-    attributor: AttributorResource,
 ) -> Output[dict[str, Any]]:
     try:
         logger.info("Starting RubyGems package version update process")
 
-        rubygems_svc = rubygems_service.get_service()
-        package_svc = package_service.get_service()
-        version_svc = version_service.get_service()
-        attr = attributor.get_attributor()
+        rubygems_svc = get_rubygems_service()
+        package_svc = get_package_service()
+        version_svc = get_version_service()
+        attr = get_attributor()
 
         updater = RubyGemsVersionUpdater(rubygems_svc, package_svc, version_svc, attr)
 

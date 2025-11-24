@@ -8,25 +8,25 @@ from zipfile import ZipFile
 from aiohttp import ClientConnectorError, ContentTypeError
 from regex import findall
 
-from src.cache import CacheManager
-from src.logger import logger
-from src.session import SessionManager
-from src.utils import (
-    Orderer,
-    PyPIConstraintsParser,
-    RepoNormalizer,
+from src.dependencies import (
+    get_cache_manager,
+    get_orderer,
+    get_pypi_constraints_parser,
+    get_repo_normalizer,
+    get_session_manager,
 )
+from src.logger import logger
 
 
 class PyPIService:
     def __init__(self):
-        self.cache: CacheManager = CacheManager(manager="pypi")
+        self.cache = get_cache_manager("pypi")
         self.BASE_URL = "https://pypi.python.org/pypi"
         self.SIMPLE_URL = "https://pypi.org/simple"
         self.FILES_URL = "https://files.pythonhosted.org/packages"
-        self.orderer = Orderer("PyPIPackage")
-        self.repo_normalizer = RepoNormalizer()
-        self.pypi_constraints_parser = PyPIConstraintsParser()
+        self.orderer = get_orderer("PyPIPackage")
+        self.repo_normalizer = get_repo_normalizer()
+        self.pypi_constraints_parser = get_pypi_constraints_parser()
 
     async def fetch_all_package_names(self) -> list[str]:
         cached = await self.cache.get_cache("all_pypi_packages")
@@ -34,7 +34,8 @@ class PyPIService:
             return cached
 
         url = f"{self.SIMPLE_URL}/"
-        session = await SessionManager.get_session()
+        session_manager = get_session_manager()
+        session = await session_manager.get_session()
 
         try:
             async with session.get(url) as resp:
@@ -59,7 +60,8 @@ class PyPIService:
             return cached
 
         url = f"{self.BASE_URL}/{package_name}/json"
-        session = await SessionManager.get_session()
+        session_manager = get_session_manager()
+        session = await session_manager.get_session()
 
         for _ in range(3):
             try:
@@ -80,7 +82,8 @@ class PyPIService:
             return cached
 
         url = f"{self.BASE_URL}/{package_name}/{version_name}/json"
-        session = await SessionManager.get_session()
+        session_manager = get_session_manager()
+        session = await session_manager.get_session()
 
         for _ in range(3):
             try:
@@ -192,7 +195,8 @@ class PyPIService:
                 logger.warning(f"PyPI - No se encontró archivo descargable para {package_name}@{version}")
                 return []
 
-            session = await SessionManager.get_session()
+            session_manager = get_session_manager()
+            session = await session_manager.get_session()
             async with session.get(download_url, timeout=30) as resp:
                 if resp.status != 200:
                     logger.warning(f"PyPI - No se pudo descargar {package_name}@{version}: HTTP {resp.status}")

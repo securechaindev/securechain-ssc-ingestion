@@ -7,26 +7,30 @@ from typing import Any
 
 from aiohttp import ClientConnectorError, ContentTypeError
 
-from src.cache import CacheManager
+from src.dependencies import (
+    get_cache_manager,
+    get_orderer,
+    get_repo_normalizer,
+    get_session_manager,
+)
 from src.logger import logger
-from src.session import SessionManager
-from src.utils import Orderer, RepoNormalizer
 
 
 class NPMService:
     def __init__(self):
-        self.cache: CacheManager = CacheManager(manager="npm")
+        self.cache = get_cache_manager("npm")
         self.BASE_URL = "https://registry.npmjs.org"
         self.CHANGES_URL = "https://replicate.npmjs.com/_changes"
-        self.orderer = Orderer("NPMService")
-        self.repo_normalizer = RepoNormalizer()
+        self.orderer = get_orderer("NPMPackage")
+        self.repo_normalizer = get_repo_normalizer()
 
     async def fetch_all_package_names(self) -> list[str]:
         cached = await self.cache.get_cache("all_npm_packages")
         if cached:
             return cached
 
-        session = await SessionManager.get_session()
+        session_manager = get_session_manager()
+        session = await session_manager.get_session()
         all_packages = set()
 
         try:
@@ -77,7 +81,8 @@ class NPMService:
             return cached
 
         url = f"{self.BASE_URL}/{package_name}"
-        session = await SessionManager.get_session()
+        session_manager = get_session_manager()
+        session = await session_manager.get_session()
 
         for _ in range(3):
             try:
@@ -157,7 +162,8 @@ class NPMService:
             return cached
 
         metadata_url = f"{self.BASE_URL}/{package_name.replace('/', '%2F')}"
-        session = await SessionManager.get_session()
+        session_manager = get_session_manager()
+        session = await session_manager.get_session()
 
         try:
             async with session.get(metadata_url, timeout=30) as resp:

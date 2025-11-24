@@ -7,28 +7,32 @@ from typing import Any
 
 from aiohttp import ClientConnectorError, ContentTypeError
 
-from src.cache import CacheManager
+from src.dependencies import (
+    get_cache_manager,
+    get_orderer,
+    get_repo_normalizer,
+    get_session_manager,
+)
 from src.logger import logger
-from src.session import SessionManager
-from src.utils import Orderer, RepoNormalizer
 
 
 class RubyGemsService:
     def __init__(self):
-        self.cache: CacheManager = CacheManager(manager="rubygems")
+        self.cache = get_cache_manager("rubygems")
         self.BASE_V1_URL = "https://rubygems.org/api/v1/versions"
         self.BASE_V2_URL = "https://rubygems.org/api/v2/rubygems"
         self.DOWNLOAD_URL = "https://rubygems.org/downloads"
         self.GEMS_NAMES_URL = "https://index.rubygems.org/names"
-        self.orderer = Orderer("RubyGemsPackage")
-        self.repo_normalizer = RepoNormalizer()
+        self.orderer = get_orderer("RubyGemsPackage")
+        self.repo_normalizer = get_repo_normalizer()
 
     async def fetch_all_package_names(self) -> list[str]:
         cached = await self.cache.get_cache("all_rubygems_packages")
         if cached:
             return cached
 
-        session = await SessionManager.get_session()
+        session_manager = get_session_manager()
+        session = await session_manager.get_session()
 
         try:
             async with session.get(self.GEMS_NAMES_URL, timeout=120) as resp:
@@ -53,7 +57,8 @@ class RubyGemsService:
             return cached
 
         url = f"{self.BASE_V1_URL}/{package_name}.json"
-        session = await SessionManager.get_session()
+        session_manager = get_session_manager()
+        session = await session_manager.get_session()
 
         for _ in range(3):
             try:
@@ -74,7 +79,8 @@ class RubyGemsService:
             return cached
 
         url = f"{self.BASE_V2_URL}/{package_name}/versions/{version_name}.json"
-        session = await SessionManager.get_session()
+        session_manager = get_session_manager()
+        session = await session_manager.get_session()
 
         for _ in range(3):
             try:
@@ -152,7 +158,8 @@ class RubyGemsService:
             logger.info(f"RubyGems - Extrayendo import_names de {gem_name}@{version}")
 
             url = f"{self.DOWNLOAD_URL}/{gem_name}-{version}.gem"
-            session = await SessionManager.get_session()
+            session_manager = get_session_manager()
+            session = await session_manager.get_session()
 
             async with session.get(url, timeout=30) as resp:
                 if resp.status != 200:

@@ -11,18 +11,21 @@ from typing import Any
 from aiohttp import ClientConnectorError, ContentTypeError
 from regex import MULTILINE, findall
 
-from src.cache import CacheManager
+from src.dependencies import (
+    get_cache_manager,
+    get_orderer,
+    get_repo_normalizer,
+    get_session_manager,
+)
 from src.logger import logger
-from src.session import SessionManager
-from src.utils import Orderer, RepoNormalizer
 
 
 class CargoService:
     def __init__(self):
-        self.cache: CacheManager = CacheManager(manager="cargo")
+        self.cache = get_cache_manager("cargo")
         self.BASE_URL = "https://crates.io/api/v1/crates"
-        self.orderer = Orderer("CargoService")
-        self.repo_normalizer = RepoNormalizer()
+        self.orderer = get_orderer("CargoPackage")
+        self.repo_normalizer = get_repo_normalizer()
 
     async def fetch_all_package_names(self) -> list[str]:
         cached = await self.cache.get_cache("all_cargo_packages")
@@ -108,7 +111,8 @@ class CargoService:
             return cached
 
         url = f"{self.BASE_URL}/{package_name}"
-        session = await SessionManager.get_session()
+        session_manager = get_session_manager()
+        session = await session_manager.get_session()
 
         for _ in range(3):
             try:
@@ -129,7 +133,8 @@ class CargoService:
             return cached
 
         url = f"{self.BASE_URL}/{package_name}/{version_name}/dependencies"
-        session = await SessionManager.get_session()
+        session_manager = get_session_manager()
+        session = await session_manager.get_session()
 
         for _ in range(3):
             try:
@@ -200,7 +205,8 @@ class CargoService:
             return cached
 
         download_url = f"https://crates.io/api/v1/crates/{crate_name}/{version}/download"
-        session = await SessionManager.get_session()
+        session_manager = get_session_manager()
+        session = await session_manager.get_session()
 
         try:
             async with session.get(download_url, timeout=30) as resp:

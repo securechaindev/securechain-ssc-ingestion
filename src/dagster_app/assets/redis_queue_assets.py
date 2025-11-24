@@ -5,16 +5,16 @@ from typing import Any
 from dagster import AssetExecutionContext, MetadataValue, Output, asset
 from pydantic import ValidationError
 
-from src.dagster_app.resources import (
-    AttributorResource,
-    CargoServiceResource,
-    MavenServiceResource,
-    NPMServiceResource,
-    NuGetServiceResource,
-    PackageServiceResource,
-    PyPIServiceResource,
-    RubyGemsServiceResource,
-    VersionServiceResource,
+from src.dependencies import (
+    get_attributor,
+    get_cargo_service,
+    get_maven_service,
+    get_npm_service,
+    get_nuget_service,
+    get_package_service,
+    get_pypi_service,
+    get_rubygems_service,
+    get_version_service,
 )
 from src.logger import logger
 from src.processes.extractors import (
@@ -44,15 +44,6 @@ from src.utils import RedisQueue
 )
 def redis_queue_processor(
     context: AssetExecutionContext,
-    pypi_service: PyPIServiceResource,
-    npm_service: NPMServiceResource,
-    maven_service: MavenServiceResource,
-    nuget_service: NuGetServiceResource,
-    cargo_service: CargoServiceResource,
-    rubygems_service: RubyGemsServiceResource,
-    package_service: PackageServiceResource,
-    version_service: VersionServiceResource,
-    attributor: AttributorResource,
 ) -> Output[dict[str, Any]]:
     try:
         logger.info("Starting Redis queue processor")
@@ -60,15 +51,15 @@ def redis_queue_processor(
 
         redis_queue = RedisQueue.from_env()
 
-        pypi_svc = pypi_service.get_service()
-        npm_svc = npm_service.get_service()
-        maven_svc = maven_service.get_service()
-        nuget_svc = nuget_service.get_service()
-        cargo_svc = cargo_service.get_service()
-        rubygems_svc = rubygems_service.get_service()
-        package_svc = package_service.get_service()
-        version_svc = version_service.get_service()
-        attr = attributor.get_attributor()
+        pypi_svc = get_pypi_service()
+        npm_svc = get_npm_service()
+        maven_svc = get_maven_service()
+        nuget_svc = get_nuget_service()
+        cargo_svc = get_cargo_service()
+        rubygems_svc = get_rubygems_service()
+        package_svc = get_package_service()
+        version_svc = get_version_service()
+        attr = get_attributor()
 
         total_processed = 0
         successful = 0

@@ -7,27 +7,31 @@ from zipfile import BadZipFile, ZipFile
 from aiohttp import ClientConnectorError, ContentTypeError
 from regex import search
 
-from src.cache import CacheManager
+from src.dependencies import (
+    get_cache_manager,
+    get_orderer,
+    get_repo_normalizer,
+    get_session_manager,
+)
 from src.logger import logger
-from src.session import SessionManager
-from src.utils import Orderer, RepoNormalizer
 
 
 class NuGetService:
     def __init__(self):
-        self.cache: CacheManager = CacheManager(manager="nuget")
+        self.cache = get_cache_manager("nuget")
         self.BASE_URL = "https://api.nuget.org/v3/registration5-gz-semver2"
         self.INDEX_URL = "https://api.nuget.org/v3/catalog0/index.json"
         self.DOWNLOAD_URL = "https://www.nuget.org/api/v2/package"
-        self.orderer = Orderer("NuGetPackage")
-        self.repo_normalizer = RepoNormalizer()
+        self.orderer = get_orderer("NuGetPackage")
+        self.repo_normalizer = get_repo_normalizer()
 
     async def fetch_all_package_names(self) -> list[str]:
         cached = await self.cache.get_cache("all_nuget_packages")
         if cached:
             return cached
 
-        session = await SessionManager.get_session()
+        session_manager = get_session_manager()
+        session = await session_manager.get_session()
         all_packages = set()
 
         try:
@@ -101,7 +105,8 @@ class NuGetService:
         if cached:
             return cached
 
-        session = await SessionManager.get_session()
+        session_manager = get_session_manager()
+        session = await session_manager.get_session()
         for _ in range(3):
             try:
                 async with session.get(url) as resp:
@@ -123,7 +128,8 @@ class NuGetService:
             return cached
 
         url = f"{self.BASE_URL}/{package_name}/index.json"
-        session = await SessionManager.get_session()
+        session_manager = get_session_manager()
+        session = await session_manager.get_session()
 
         for _ in range(3):
             try:
@@ -198,7 +204,9 @@ class NuGetService:
             logger.info(f"NuGet - Extrayendo import_names de {package_name}@{version}")
 
             url = f"{self.DOWNLOAD_URL}/{package_name}/{version}"
-            session = await SessionManager.get_session()
+            from src.dependencies import get_session_manager
+            session_manager = get_session_manager()
+            session = await session_manager.get_session()
 
             async with session.get(url, timeout=30) as resp:
                 if resp.status != 200:

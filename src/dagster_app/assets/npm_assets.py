@@ -3,11 +3,11 @@ from typing import Any
 
 from dagster import AssetExecutionContext, MetadataValue, Output, asset
 
-from src.dagster_app.resources import (
-    AttributorResource,
-    NPMServiceResource,
-    PackageServiceResource,
-    VersionServiceResource,
+from src.dependencies import (
+    get_attributor,
+    get_npm_service,
+    get_package_service,
+    get_version_service,
 )
 from src.logger import logger
 from src.processes.extractors import NPMPackageExtractor
@@ -22,18 +22,14 @@ from src.schemas import NPMPackageSchema
 )
 def npm_package_ingestion(
     context: AssetExecutionContext,
-    npm_service: NPMServiceResource,
-    package_service: PackageServiceResource,
-    version_service: VersionServiceResource,
-    attributor: AttributorResource,
 ) -> Output[dict[str, Any]]:
     try:
         logger.info("Starting NPM package ingestion process")
 
-        npm_svc = npm_service.get_service()
-        package_svc = package_service.get_service()
-        version_svc = version_service.get_service()
-        attr = attributor.get_attributor()
+        npm_svc = get_npm_service()
+        package_svc = get_package_service()
+        version_svc = get_version_service()
+        attr = get_attributor()
 
         async def _run():
             new_packages = 0
@@ -118,18 +114,14 @@ def npm_package_ingestion(
 )
 def npm_packages_updates(
     context: AssetExecutionContext,
-    npm_service: NPMServiceResource,
-    package_service: PackageServiceResource,
-    version_service: VersionServiceResource,
-    attributor: AttributorResource,
 ) -> Output[dict[str, Any]]:
     try:
         logger.info("Starting NPM package version update process")
 
-        npm_svc = npm_service.get_service()
-        package_svc = package_service.get_service()
-        version_svc = version_service.get_service()
-        attr = attributor.get_attributor()
+        npm_svc = get_npm_service()
+        package_svc = get_package_service()
+        version_svc = get_version_service()
+        attr = get_attributor()
 
         updater = NPMVersionUpdater(npm_svc, package_svc, version_svc, attr)
 

@@ -8,19 +8,22 @@ from zipfile import BadZipFile, ZipFile
 
 from aiohttp import ClientConnectorError, ContentTypeError
 
-from src.cache import CacheManager
+from src.dependencies import (
+    get_cache_manager,
+    get_orderer,
+    get_repo_normalizer,
+    get_session_manager,
+)
 from src.logger import logger
-from src.session import SessionManager
-from src.utils import Orderer, RepoNormalizer
 
 
 class MavenService:
     def __init__(self):
-        self.cache: CacheManager = CacheManager(manager="maven")
+        self.cache = get_cache_manager("maven")
         self.BASE_URL = "https://search.maven.org/solrsearch/select"
         self.CENTRAL_URL = "https://repo1.maven.org/maven2"
-        self.orderer = Orderer("MavenService")
-        self.repo_normalizer = RepoNormalizer()
+        self.orderer = get_orderer("MavenPackage")
+        self.repo_normalizer = get_repo_normalizer()
 
     async def fetch_all_package_names(self) -> list[str]:
         cached = await self.cache.get_cache("all_mvn_packages")
@@ -114,7 +117,8 @@ class MavenService:
             return cached
 
         url = f"{self.BASE_URL}?q=g:{group_id}+AND+a:{artifact_id}&core=gav&rows=200&wt=json"
-        session = await SessionManager.get_session()
+        session_manager = get_session_manager()
+        session = await session_manager.get_session()
 
         for _ in range(3):
             try:
@@ -136,7 +140,8 @@ class MavenService:
 
         group_path = group_id.replace(".", "/")
         url = f"{self.CENTRAL_URL}/{group_path}/{artifact_id}/{version_name}/{artifact_id}-{version_name}.pom"
-        session = await SessionManager.get_session()
+        session_manager = get_session_manager()
+        session = await session_manager.get_session()
 
         for _ in range(3):
             try:
@@ -266,7 +271,8 @@ class MavenService:
 
         group_path = group_id.replace(".", "/")
         download_url = f"{self.CENTRAL_URL}/{group_path}/{artifact_id}/{version}/{artifact_id}-{version}.jar"
-        session = await SessionManager.get_session()
+        session_manager = get_session_manager()
+        session = await session_manager.get_session()
 
         try:
             async with session.get(download_url, timeout=30) as resp:

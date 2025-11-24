@@ -3,11 +3,11 @@ from typing import Any
 
 from dagster import AssetExecutionContext, MetadataValue, Output, asset
 
-from src.dagster_app.resources import (
-    AttributorResource,
-    CargoServiceResource,
-    PackageServiceResource,
-    VersionServiceResource,
+from src.dependencies import (
+    get_attributor,
+    get_cargo_service,
+    get_package_service,
+    get_version_service,
 )
 from src.logger import logger
 from src.processes.extractors import CargoPackageExtractor
@@ -22,18 +22,14 @@ from src.schemas import CargoPackageSchema
 )
 def cargo_package_ingestion(
     context: AssetExecutionContext,
-    cargo_service: CargoServiceResource,
-    package_service: PackageServiceResource,
-    version_service: VersionServiceResource,
-    attributor: AttributorResource,
 ) -> Output[dict[str, Any]]:
     try:
         logger.info("Starting Cargo package ingestion process")
 
-        cargo_svc = cargo_service.get_service()
-        package_svc = package_service.get_service()
-        version_svc = version_service.get_service()
-        attr = attributor.get_attributor()
+        cargo_svc = get_cargo_service()
+        package_svc = get_package_service()
+        version_svc = get_version_service()
+        attr = get_attributor()
 
         async def _run():
             new_packages = 0
@@ -118,18 +114,14 @@ def cargo_package_ingestion(
 )
 def cargo_packages_updates(
     context: AssetExecutionContext,
-    cargo_service: CargoServiceResource,
-    package_service: PackageServiceResource,
-    version_service: VersionServiceResource,
-    attributor: AttributorResource,
 ) -> Output[dict[str, Any]]:
     try:
         logger.info("Starting Cargo package version update process")
 
-        cargo_svc = cargo_service.get_service()
-        package_svc = package_service.get_service()
-        version_svc = version_service.get_service()
-        attr = attributor.get_attributor()
+        cargo_svc = get_cargo_service()
+        package_svc = get_package_service()
+        version_svc = get_version_service()
+        attr = get_attributor()
 
         updater = CargoVersionUpdater(cargo_svc, package_svc, version_svc, attr)
 

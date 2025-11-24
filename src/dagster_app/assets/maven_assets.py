@@ -3,11 +3,11 @@ from typing import Any
 
 from dagster import AssetExecutionContext, MetadataValue, Output, asset
 
-from src.dagster_app.resources import (
-    AttributorResource,
-    MavenServiceResource,
-    PackageServiceResource,
-    VersionServiceResource,
+from src.dependencies import (
+    get_attributor,
+    get_maven_service,
+    get_package_service,
+    get_version_service,
 )
 from src.logger import logger
 from src.processes.extractors import MavenPackageExtractor
@@ -22,18 +22,14 @@ from src.schemas import MavenPackageSchema
 )
 def maven_package_ingestion(
     context: AssetExecutionContext,
-    maven_service: MavenServiceResource,
-    package_service: PackageServiceResource,
-    version_service: VersionServiceResource,
-    attributor: AttributorResource,
 ) -> Output[dict[str, Any]]:
     try:
         logger.info("Starting Maven package ingestion process")
 
-        maven_svc = maven_service.get_service()
-        package_svc = package_service.get_service()
-        version_svc = version_service.get_service()
-        attr = attributor.get_attributor()
+        maven_svc = get_maven_service()
+        package_svc = get_package_service()
+        version_svc = get_version_service()
+        attr = get_attributor()
 
         async def _run():
             new_packages = 0
@@ -131,18 +127,14 @@ def maven_package_ingestion(
 )
 def maven_packages_updates(
     context: AssetExecutionContext,
-    maven_service: MavenServiceResource,
-    package_service: PackageServiceResource,
-    version_service: VersionServiceResource,
-    attributor: AttributorResource,
 ) -> Output[dict[str, Any]]:
     try:
         logger.info("Starting Maven package version update process")
 
-        maven_svc = maven_service.get_service()
-        package_svc = package_service.get_service()
-        version_svc = version_service.get_service()
-        attr = attributor.get_attributor()
+        maven_svc = get_maven_service()
+        package_svc = get_package_service()
+        version_svc = get_version_service()
+        attr = get_attributor()
 
         updater = MavenVersionUpdater(maven_svc, package_svc, version_svc, attr)
 

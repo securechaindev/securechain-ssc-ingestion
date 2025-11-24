@@ -3,11 +3,11 @@ from typing import Any
 
 from dagster import AssetExecutionContext, MetadataValue, Output, asset
 
-from src.dagster_app.resources import (
-    AttributorResource,
-    NuGetServiceResource,
-    PackageServiceResource,
-    VersionServiceResource,
+from src.dependencies import (
+    get_attributor,
+    get_nuget_service,
+    get_package_service,
+    get_version_service,
 )
 from src.logger import logger
 from src.processes.extractors import NuGetPackageExtractor
@@ -22,18 +22,14 @@ from src.schemas import NuGetPackageSchema
 )
 def nuget_package_ingestion(
     context: AssetExecutionContext,
-    nuget_service: NuGetServiceResource,
-    package_service: PackageServiceResource,
-    version_service: VersionServiceResource,
-    attributor: AttributorResource,
 ) -> Output[dict[str, Any]]:
     try:
         logger.info("Starting NuGet package ingestion process")
 
-        nuget_svc = nuget_service.get_service()
-        package_svc = package_service.get_service()
-        version_svc = version_service.get_service()
-        attr = attributor.get_attributor()
+        nuget_svc = get_nuget_service()
+        package_svc = get_package_service()
+        version_svc = get_version_service()
+        attr = get_attributor()
 
         async def _run():
             new_packages = 0
@@ -118,18 +114,14 @@ def nuget_package_ingestion(
 )
 def nuget_packages_updates(
     context: AssetExecutionContext,
-    nuget_service: NuGetServiceResource,
-    package_service: PackageServiceResource,
-    version_service: VersionServiceResource,
-    attributor: AttributorResource,
 ) -> Output[dict[str, Any]]:
     try:
         logger.info("Starting NuGet package version update process")
 
-        nuget_svc = nuget_service.get_service()
-        package_svc = package_service.get_service()
-        version_svc = version_service.get_service()
-        attr = attributor.get_attributor()
+        nuget_svc = get_nuget_service()
+        package_svc = get_package_service()
+        version_svc = get_version_service()
+        attr = get_attributor()
 
         updater = NuGetVersionUpdater(nuget_svc, package_svc, version_svc, attr)
 
