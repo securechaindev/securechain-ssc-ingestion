@@ -1,11 +1,11 @@
 from typing import Any
 
-from src.services.dbs import get_graph_db_driver
+from src.database import DatabaseManager
 
 
 class VersionService:
-    def __init__(self):
-        self._driver = get_graph_db_driver()
+    def __init__(self,  db: DatabaseManager):
+        self.driver = db.get_neo4j_driver()
 
     async def create_versions(
         self,
@@ -28,7 +28,7 @@ class VersionService:
         CREATE (package)-[:HAVE]->(v)
         RETURN collect({{name: v.name, id: elementid(v)}}) AS versions
         """
-        async with self._driver.session() as session:
+        async with self.driver.session() as session:
             result = await session.run(
                 query,
                 package_name=package_name,
@@ -43,7 +43,7 @@ class VersionService:
         MATCH (p)-[:HAVE]->(v)
         RETURN collect(v.name) AS version_names
         """
-        async with self._driver.session() as session:
+        async with self.driver.session() as session:
             result = await session.run(query, package_name=package_name)
             record = await result.single()
         return record["version_names"] if record else None
@@ -62,7 +62,7 @@ class VersionService:
         WHERE v.name = version.name
         SET v.serial_number = version.serial_number
         """
-        async with self._driver.session() as session:
+        async with self.driver.session() as session:
             await session.run(
                 query,
                 package_name=package_name,
@@ -75,7 +75,7 @@ class VersionService:
         MATCH (p)-[r:HAVE]->(v: Version)
         RETURN count(v) AS version_count
         """
-        async with self._driver.session() as session:
+        async with self.driver.session() as session:
             result = await session.run(query, package_name=package_name)
             record = await result.single()
         return record["version_count"] if record else 0

@@ -2,12 +2,12 @@ from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Any
 
-from src.services.dbs import get_graph_db_driver
+from src.database import DatabaseManager
 
 
 class PackageService:
-    def __init__(self):
-        self._driver = get_graph_db_driver()
+    def __init__(self, db: DatabaseManager):
+        self.driver = db.get_neo4j_driver()
 
     async def create_package_and_versions(
         self,
@@ -51,7 +51,7 @@ class PackageService:
         CREATE (package)-[:HAVE]->(v)
         RETURN collect({{name: v.name, id: elementid(v)}}) AS versions
         """
-        async with self._driver.session() as session:
+        async with self.driver.session() as session:
             result = await session.run(
                 query,
                 package,
@@ -68,7 +68,7 @@ class PackageService:
         MATCH(p:{node_type}{{name:$package_name}})
         RETURN p{{id: elementid(p), .*}} AS package
         """
-        async with self._driver.session() as session:
+        async with self.driver.session() as session:
             result = await session.run(
                 query,
                 package_name=package_name
@@ -88,7 +88,7 @@ class PackageService:
             RETURN p.name AS name, p.moment AS moment
             SKIP $skip LIMIT $limit
             """
-            async with self._driver.session() as session:
+            async with self.driver.session() as session:
                 result = await session.run(query, skip=skip, limit=batch_size)
                 records = [record async for record in result]
                 if not records:
@@ -105,7 +105,7 @@ class PackageService:
         WHERE elementid(p) = package.id
         CREATE (parent)-[:REQUIRE{{constraints: package.constraints, parent_version_name: package.parent_version_name}}]->(p)
         """
-        async with self._driver.session() as session:
+        async with self.driver.session() as session:
             await session.run(query, packages=packages)
 
     async def update_package_moment(self, node_type: str, package_name: str) -> None:
@@ -113,5 +113,5 @@ class PackageService:
         MATCH(p:{node_type}{{name:$package_name}})
         SET p.moment = $moment
         """
-        async with self._driver.session() as session:
+        async with self.driver.session() as session:
             await session.run(query, package_name=package_name, moment=datetime.now())
