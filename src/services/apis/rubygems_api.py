@@ -135,6 +135,8 @@ class RubyGemsService:
             name = dep.get("name")
             req = dep.get("requirements")
             if name:
+                if req:
+                    req = req.replace("==", "=")
                 requirements[name.lower()] = req or ""
 
         return requirements
