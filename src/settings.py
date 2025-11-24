@@ -1,9 +1,12 @@
 from functools import lru_cache
 
+from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    model_config = ConfigDict(env_file=".env")
+
     GRAPH_DB_URI: str = "bolt://localhost:7687"
     GRAPH_DB_USER: str = "neo4j"
     GRAPH_DB_PASSWORD: str = "neoSecureChain"
@@ -16,11 +19,6 @@ class Settings(BaseSettings):
     REDIS_STREAM: str = "package_extraction"
     REDIS_GROUP: str = "extractors"
     REDIS_CONSUMER: str = "package-consumer"
-
-
-    class Config:
-        env_file = ".env"
-        extra = "ignore"
 
 
 @lru_cache
