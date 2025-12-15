@@ -8,10 +8,10 @@ class CacheManager:
         self._cache = SimpleMemoryCache()
         self._manager = manager
 
-    async def get_cache(self, key: str) -> dict[str, Any] | None:
+    async def get_cache(self, key: str) -> Any | None:
         return await self._cache.get(f"{self._manager}:{key}")
 
-    async def set_cache(self, key: str, response: str, ttl: int) -> None:
+    async def set_cache(self, key: str, response: Any, ttl: int) -> None:
         await self._cache.set(f"{self._manager}:{key}", response, ttl=ttl)
 
     async def clear_cache(self, key: str) -> None:
