@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from src.dependencies import (
     get_attributor,
     get_cargo_service,
+    get_db,
     get_maven_service,
     get_npm_service,
     get_nuget_service,
@@ -57,9 +58,6 @@ def redis_queue_processor(
         nuget_svc = get_nuget_service()
         cargo_svc = get_cargo_service()
         rubygems_svc = get_rubygems_service()
-        package_svc = get_package_service()
-        version_svc = get_version_service()
-        attr = get_attributor()
 
         total_processed = 0
         successful = 0
@@ -67,49 +65,58 @@ def redis_queue_processor(
         validation_errors = 0
         unsupported_types = 0
 
-        extractor_map = {
-            "PyPIPackage": {
-                "extractor_class": PyPIPackageExtractor,
-                "schema_class": PyPIPackageSchema,
-                "service": pypi_svc,
-                "service_param": "pypi_service",
-            },
-            "NPMPackage": {
-                "extractor_class": NPMPackageExtractor,
-                "schema_class": NPMPackageSchema,
-                "service": npm_svc,
-                "service_param": "npm_service",
-            },
-            "MavenPackage": {
-                "extractor_class": MavenPackageExtractor,
-                "schema_class": MavenPackageSchema,
-                "service": maven_svc,
-                "service_param": "maven_service",
-            },
-            "NuGetPackage": {
-                "extractor_class": NuGetPackageExtractor,
-                "schema_class": NuGetPackageSchema,
-                "service": nuget_svc,
-                "service_param": "nuget_service",
-            },
-            "CargoPackage": {
-                "extractor_class": CargoPackageExtractor,
-                "schema_class": CargoPackageSchema,
-                "service": cargo_svc,
-                "service_param": "cargo_service",
-            },
-            "RubyGemsPackage": {
-                "extractor_class": RubyGemsPackageExtractor,
-                "schema_class": RubyGemsPackageSchema,
-                "service": rubygems_svc,
-                "service_param": "rubygems_service",
-            },
-        }
-
         async def _process_messages():
             nonlocal total_processed, successful, failed, validation_errors, unsupported_types
 
-            messages = await redis_queue.read_batch(count=100, block_ms=1000)
+            # Initialize database connection
+            db = get_db()
+            await db.initialize()
+
+            # Get DB-dependent services after initialization
+            package_svc = get_package_service()
+            version_svc = get_version_service()
+            attr = get_attributor()
+
+            extractor_map = {
+                "PyPIPackage": {
+                    "extractor_class": PyPIPackageExtractor,
+                    "schema_class": PyPIPackageSchema,
+                    "service": pypi_svc,
+                    "service_param": "pypi_service",
+                },
+                "NPMPackage": {
+                    "extractor_class": NPMPackageExtractor,
+                    "schema_class": NPMPackageSchema,
+                    "service": npm_svc,
+                    "service_param": "npm_service",
+                },
+                "MavenPackage": {
+                    "extractor_class": MavenPackageExtractor,
+                    "schema_class": MavenPackageSchema,
+                    "service": maven_svc,
+                    "service_param": "maven_service",
+                },
+                "NuGetPackage": {
+                    "extractor_class": NuGetPackageExtractor,
+                    "schema_class": NuGetPackageSchema,
+                    "service": nuget_svc,
+                    "service_param": "nuget_service",
+                },
+                "CargoPackage": {
+                    "extractor_class": CargoPackageExtractor,
+                    "schema_class": CargoPackageSchema,
+                    "service": cargo_svc,
+                    "service_param": "cargo_service",
+                },
+                "RubyGemsPackage": {
+                    "extractor_class": RubyGemsPackageExtractor,
+                    "schema_class": RubyGemsPackageSchema,
+                    "service": rubygems_svc,
+                    "service_param": "rubygems_service",
+                },
+            }
+
+            messages = redis_queue.read_batch(count=100, block_ms=1000)
 
             if not messages:
                 logger.info("No messages in Redis queue")
