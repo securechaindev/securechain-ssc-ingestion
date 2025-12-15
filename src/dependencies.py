@@ -1,22 +1,11 @@
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from aiohttp import ClientTimeout
 
 from src.cache import CacheManager
 from src.database import DatabaseManager
-from src.services import (
-    CargoService,
-    MavenService,
-    NPMService,
-    NuGetService,
-    PackageService,
-    PyPIService,
-    RubyGemsService,
-    VersionService,
-    VulnerabilityService,
-)
 from src.session import SessionManager
 from src.settings import settings
 from src.utils import (
@@ -27,20 +16,33 @@ from src.utils import (
     RepoNormalizer,
 )
 
+if TYPE_CHECKING:
+    from src.services import (
+        CargoService,
+        MavenService,
+        NPMService,
+        NuGetService,
+        PackageService,
+        PyPIService,
+        RubyGemsService,
+        VersionService,
+        VulnerabilityService,
+    )
+
 
 class ServiceContainer:
     instance: ServiceContainer | None = None
     db_manager: DatabaseManager | None = None
     session_manager: SessionManager | None = None
-    cargo_service: CargoService | None = None
-    maven_service: MavenService | None = None
-    npm_service: NPMService | None = None
-    nuget_service: NuGetService | None = None
-    pypi_service: PyPIService | None = None
-    rubygems_service: RubyGemsService | None = None
-    package_service: PackageService | None = None
-    version_service: VersionService | None = None
-    vulnerability_service: VulnerabilityService | None = None
+    cargo_service: Any = None
+    maven_service: Any = None
+    npm_service: Any = None
+    nuget_service: Any = None
+    pypi_service: Any = None
+    rubygems_service: Any = None
+    package_service: Any = None
+    version_service: Any = None
+    vulnerability_service: Any = None
     redis_queue: RedisQueue | None = None
     attributor: Attributor | None = None
     repo_normalizer: RepoNormalizer | None = None
@@ -93,46 +95,55 @@ class ServiceContainer:
 
     def get_cargo_service(self) -> CargoService:
         if self.cargo_service is None:
+            from src.services import CargoService
             self.cargo_service = CargoService()
         return self.cargo_service
 
     def get_maven_service(self) -> MavenService:
         if self.maven_service is None:
+            from src.services import MavenService
             self.maven_service = MavenService()
         return self.maven_service
 
     def get_npm_service(self) -> NPMService:
         if self.npm_service is None:
+            from src.services import NPMService
             self.npm_service = NPMService()
         return self.npm_service
 
     def get_nuget_service(self) -> NuGetService:
         if self.nuget_service is None:
+            from src.services import NuGetService
             self.nuget_service = NuGetService()
         return self.nuget_service
 
     def get_pypi_service(self) -> PyPIService:
         if self.pypi_service is None:
+            from src.services import PyPIService
             self.pypi_service = PyPIService()
         return self.pypi_service
 
     def get_rubygems_service(self) -> RubyGemsService:
         if self.rubygems_service is None:
+            from src.services import RubyGemsService
             self.rubygems_service = RubyGemsService()
         return self.rubygems_service
 
     def get_package_service(self) -> PackageService:
         if self.package_service is None:
+            from src.services import PackageService
             self.package_service = PackageService(self.get_db())
         return self.package_service
 
     def get_version_service(self) -> VersionService:
         if self.version_service is None:
+            from src.services import VersionService
             self.version_service = VersionService(self.get_db())
         return self.version_service
 
     def get_vulnerability_service(self) -> VulnerabilityService:
         if self.vulnerability_service is None:
+            from src.services import VulnerabilityService
             self.vulnerability_service = VulnerabilityService(self.get_db())
         return self.vulnerability_service
 
