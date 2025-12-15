@@ -5,6 +5,7 @@ from dagster import AssetExecutionContext, MetadataValue, Output, asset
 
 from src.dependencies import (
     get_attributor,
+    get_db,
     get_package_service,
     get_pypi_service,
     get_version_service,
@@ -27,11 +28,15 @@ def pypi_package_ingestion(
         logger.info("Starting PyPI package ingestion process")
 
         pypi_svc = get_pypi_service()
-        package_svc = get_package_service()
-        version_svc = get_version_service()
-        attr = get_attributor()
 
         async def _run():
+            # Initialize database connection
+            await get_db().initialize()
+            
+            package_svc = get_package_service()
+            version_svc = get_version_service()
+            attr = get_attributor()
+
             new_packages = 0
             skipped_packages = 0
             error_count = 0
@@ -117,13 +122,17 @@ def pypi_packages_updates(
         logger.info("Starting PyPI package version update process")
 
         pypi_svc = get_pypi_service()
-        package_svc = get_package_service()
-        version_svc = get_version_service()
-        attr = get_attributor()
-
-        updater = PyPIVersionUpdater(pypi_svc, package_svc, version_svc, attr)
 
         async def _run():
+            # Initialize database connection
+            await get_db().initialize()
+            
+            package_svc = get_package_service()
+            version_svc = get_version_service()
+            attr = get_attributor()
+
+            updater = PyPIVersionUpdater(pypi_svc, package_svc, version_svc, attr)
+
             package_count = 0
             version_count = 0
             error_count = 0

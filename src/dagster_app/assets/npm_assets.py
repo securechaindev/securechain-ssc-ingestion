@@ -5,6 +5,7 @@ from dagster import AssetExecutionContext, MetadataValue, Output, asset
 
 from src.dependencies import (
     get_attributor,
+    get_db,
     get_npm_service,
     get_package_service,
     get_version_service,
@@ -27,11 +28,15 @@ def npm_package_ingestion(
         logger.info("Starting NPM package ingestion process")
 
         npm_svc = get_npm_service()
-        package_svc = get_package_service()
-        version_svc = get_version_service()
-        attr = get_attributor()
 
         async def _run():
+            # Initialize database connection
+            await get_db().initialize()
+            
+            package_svc = get_package_service()
+            version_svc = get_version_service()
+            attr = get_attributor()
+
             new_packages = 0
             skipped_packages = 0
             error_count = 0
@@ -119,13 +124,17 @@ def npm_packages_updates(
         logger.info("Starting NPM package version update process")
 
         npm_svc = get_npm_service()
-        package_svc = get_package_service()
-        version_svc = get_version_service()
-        attr = get_attributor()
-
-        updater = NPMVersionUpdater(npm_svc, package_svc, version_svc, attr)
 
         async def _run():
+            # Initialize database connection
+            await get_db().initialize()
+            
+            package_svc = get_package_service()
+            version_svc = get_version_service()
+            attr = get_attributor()
+
+            updater = NPMVersionUpdater(npm_svc, package_svc, version_svc, attr)
+
             package_count = 0
             version_count = 0
             error_count = 0
