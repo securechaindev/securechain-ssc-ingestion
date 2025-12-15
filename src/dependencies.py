@@ -132,7 +132,7 @@ class ServiceContainer:
 
     def get_redis_queue(self) -> RedisQueue:
         if self.redis_queue is None:
-            self.redis_queue = RedisQueue()
+            self.redis_queue = RedisQueue.from_env()
         return self.redis_queue
 
 def get_db() -> DatabaseManager:
