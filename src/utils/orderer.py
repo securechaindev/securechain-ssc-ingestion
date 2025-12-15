@@ -23,7 +23,7 @@ class Orderer:
         univers_versions: list[tuple[Version, dict[str, Any]]] = []
         for version in versions:
             try:
-                univers_versions.append((version_type(version.get("name")), version))
+                univers_versions.append((version_type(version.get("name")), version)) # type: ignore[call-arg]
             except Exception:
                 final_versions.append({
                     "name": version.get("name"),
