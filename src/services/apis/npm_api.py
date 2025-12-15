@@ -207,7 +207,7 @@ class NPMService:
         import_names = set()
 
         try:
-            with open_tarfile.open(fileobj=BytesIO(tgz_bytes), mode="r:gz") as tar:
+            with open_tarfile(fileobj=BytesIO(tgz_bytes), mode="r:gz") as tar:
                 for member in tar.getmembers():
                     if member.isfile():
                         name = member.name
