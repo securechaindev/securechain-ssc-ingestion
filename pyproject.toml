@@ -3,11 +3,11 @@ name = "securechain-ssc-ingestion"
 version = "1.1.0"
 description = "SecureChain SSC Ingestion Service"
 readme = "README.md"
-requires-python = "==3.13.9"
+requires-python = ">=3.14"
 dependencies = [
-    "dagster==1.12.3",
-    "dagster-webserver==1.12.3",
-    "dagster-postgres==0.28.3",
+    "dagster==1.12.6",
+    "dagster-webserver==1.12.6",
+    "dagster-postgres==0.28.6",
     "redis==7.1.0",
     "pydantic==2.12.4",
     "pydantic-settings==2.12.0",
