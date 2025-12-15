@@ -94,7 +94,7 @@ class RubyGemsService:
                 return None
         return None
 
-    def extract_raw_versions(self, metadata: dict[str, Any]) -> list[dict[str, Any]]:
+    def extract_raw_versions(self, metadata: dict[str, Any] | list[dict[str, Any]]) -> list[dict[str, Any]]:
         raw_versions = []
         if isinstance(metadata, list):
             for version_data in metadata:
@@ -104,19 +104,19 @@ class RubyGemsService:
                     raw_versions.append({"name": version, "release_date": created_at})
         return raw_versions
 
-    async def get_versions(self, metadata: dict[str, Any]) -> list[dict[str, Any]]:
+    async def get_versions(self, metadata: dict[str, Any] | list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not metadata:
             return []
         raw = self.extract_raw_versions(metadata)
         return self.orderer.order_versions(raw)
 
-    def get_repo_url(self, metadata: dict[str, Any]) -> str | None:
+    def get_repo_url(self, metadata: dict[str, Any] | list[dict[str, Any]]) -> str | None:
         if not metadata:
             return None
 
         if isinstance(metadata, list):
             for version_data in metadata:
-                version_metadata = version_data.get("metadata", {})
+                version_metadata: dict = version_data.get("metadata", {})
                 raw_url = (version_metadata.get("source_code_uri") or
                           version_metadata.get("homepage_uri") or
                           version_metadata.get("bug_tracker_uri"))
