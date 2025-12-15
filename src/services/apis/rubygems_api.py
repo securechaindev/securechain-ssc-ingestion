@@ -195,8 +195,10 @@ class RubyGemsService:
                 data_tar_gz = None
                 for member in gem_tar.getmembers():
                     if member.name.endswith("data.tar.gz"):
-                        data_tar_gz = gem_tar.extractfile(member).read()
-                        break
+                        data_tar_file = gem_tar.extractfile(member)
+                        if data_tar_file:
+                            data_tar_gz = data_tar_file.read()
+                            break
 
                 if not data_tar_gz:
                     return []
