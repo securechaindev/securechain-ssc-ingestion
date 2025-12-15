@@ -1,9 +1,9 @@
-from .cargo_api import CargoService
-from .maven_api import MavenService
-from .npm_api import NPMService
-from .nuget_api import NuGetService
-from .pypi_api import PyPIService
-from .rubygems_api import RubyGemsService
+from .cargo_service import CargoService
+from .maven_service import MavenService
+from .npm_service import NPMService
+from .nuget_service import NuGetService
+from .pypi_service import PyPIService
+from .rubygems_service import RubyGemsService
 
 __all__ = [
     "CargoService",
