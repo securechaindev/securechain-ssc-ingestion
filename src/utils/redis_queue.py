@@ -14,7 +14,7 @@ class RedisQueue:
                 raise
 
     @classmethod
-    def from_env(cls) -> "RedisQueue":
+    def from_env(cls) -> RedisQueue:
         return cls(settings.REDIS_HOST, settings.REDIS_PORT, settings.REDIS_DB)
 
     async def read_batch(self, count: int = 20, block_ms: int | None = None) -> list[tuple[str, str]]:
