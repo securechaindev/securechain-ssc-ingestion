@@ -13,6 +13,7 @@ from regex import MULTILINE, findall
 
 from src.dependencies import (
     get_cache_manager,
+    get_default_timeout,
     get_orderer,
     get_repo_normalizer,
     get_session_manager,
@@ -209,7 +210,7 @@ class CargoService:
         session = await session_manager.get_session()
 
         try:
-            async with session.get(download_url, timeout=30) as resp:
+            async with session.get(download_url, timeout=get_default_timeout()) as resp:
                 if resp.status != 200:
                     logger.warning(f"Cargo - Failed to download {crate_name}@{version}: HTTP {resp.status}")
                     return []

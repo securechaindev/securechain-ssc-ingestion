@@ -9,6 +9,8 @@ from aiohttp import ClientConnectorError, ContentTypeError
 
 from src.dependencies import (
     get_cache_manager,
+    get_default_timeout,
+    get_long_timeout,
     get_orderer,
     get_repo_normalizer,
     get_session_manager,
@@ -42,7 +44,7 @@ class NPMService:
             while True:
                 params = {"limit": batch_size, "since": since}
 
-                async with session.get(self.CHANGES_URL, params=params, timeout=180) as resp:
+                async with session.get(self.CHANGES_URL, params=params, timeout=get_long_timeout()) as resp:
                     if resp.status != 200:
                         logger.warning(f"NPM - Error fetching changes: HTTP {resp.status}")
                         break
@@ -166,7 +168,7 @@ class NPMService:
         session = await session_manager.get_session()
 
         try:
-            async with session.get(metadata_url, timeout=30) as resp:
+            async with session.get(metadata_url, timeout=get_default_timeout()) as resp:
                 if resp.status != 200:
                     logger.warning(f"NPM - Failed to get metadata for {package_name}@{version}: HTTP {resp.status}")
                     return []
@@ -186,7 +188,7 @@ class NPMService:
                     logger.warning(f"NPM - No tarball URL found for {package_name}@{version}")
                     return []
 
-            async with session.get(tarball_url, timeout=30) as resp:
+            async with session.get(tarball_url, timeout=get_default_timeout()) as resp:
                 if resp.status != 200:
                     logger.warning(f"NPM - Failed to download {package_name}@{version}: HTTP {resp.status}")
                     return []
