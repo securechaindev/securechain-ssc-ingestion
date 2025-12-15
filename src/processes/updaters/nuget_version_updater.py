@@ -21,7 +21,7 @@ class NuGetVersionUpdater:
         self.attributor = attributor
 
     async def update_package_versions(self, package: dict[str, Any]) -> None:
-        package_name = package.get("name")
+        package_name = package.get("name", "")
 
         metadata = await self.nuget_service.fetch_package_metadata(package_name)
         versions, requirements = await self.nuget_service.get_versions_and_requirements(metadata)
@@ -35,7 +35,7 @@ class NuGetVersionUpdater:
             actual_versions = await self.version_service.read_versions_names_by_package("NuGetPackage", package_name)
 
             for index, (version, requirement) in enumerate(zip(versions, requirements, strict=False)):
-                if version.get("name") not in actual_versions:
+                if version.get("name", "") not in actual_versions:
                     new_attributed_versions.append(
                         await self.attributor.attribute_vulnerabilities(package_name, version)
                     )
@@ -66,6 +66,6 @@ class NuGetVersionUpdater:
                     attributor=self.attributor,
                 )
                 if requirement:
-                    await extractor.generate_packages(requirement, version.get("id"), package_name)
+                    await extractor.generate_packages(requirement, version.get("id", ""), package_name)
 
         await self.package_service.update_package_moment("NuGetPackage", package_name)

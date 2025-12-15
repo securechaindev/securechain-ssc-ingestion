@@ -111,7 +111,7 @@ class MavenService:
             logger.error(f"Maven - Unexpected error: {e}")
             return []
 
-    async def fetch_package_metadata(self, group_id: str, artifact_id: str) -> dict[str, Any] | None:
+    async def fetch_package_metadata(self, group_id: str, artifact_id: str) -> dict[str, Any]:
         package_name = f"{group_id}:{artifact_id}"
         cached = await self.cache.get_cache(package_name)
         if cached:
@@ -130,10 +130,10 @@ class MavenService:
             except (ClientConnectorError, TimeoutError):
                 await sleep(5)
             except (JSONDecodeError, ContentTypeError):
-                return None
-        return None
+                return {}
+        return {}
 
-    async def fetch_package_version_metadata(self, group_id: str, artifact_id: str, version_name: str) -> dict[str, Any] | None:
+    async def fetch_package_version_metadata(self, group_id: str, artifact_id: str, version_name: str) -> dict[str, Any]:
         cache_key = f"{group_id}:{artifact_id}:{version_name}"
         cached = await self.cache.get_cache(cache_key)
         if cached:
@@ -154,8 +154,8 @@ class MavenService:
             except (ClientConnectorError, TimeoutError):
                 await sleep(5)
             except (JSONDecodeError, ContentTypeError):
-                return None
-        return None
+                return {}
+        return {}
 
     def extract_raw_versions(self, metadata: dict[str, Any]) -> list[dict[str, Any]]:
         raw_versions = []

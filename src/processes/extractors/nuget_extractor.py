@@ -96,4 +96,4 @@ class NuGetPackageExtractor(PackageExtractor):
         )
 
         for created_version, requirement in zip(created_versions, requirements, strict=False):
-            await self.generate_packages(requirement, created_version.get("id"), package_name)
+            await self.generate_packages(requirement, created_version.get("id", ""), package_name)

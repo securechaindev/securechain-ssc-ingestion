@@ -83,7 +83,7 @@ class NPMPackageExtractor(PackageExtractor):
 
         pkg = NPMPackageSchema(
             name=package_name,
-            vendor=vendor,
+            vendor=vendor or "n/a",
             repository_url=repository_url or "n/a",
             moment=datetime.now(),
             import_names=import_names,
@@ -99,4 +99,4 @@ class NPMPackageExtractor(PackageExtractor):
         )
 
         for created_version, requirement in zip(created_versions, requirements, strict=False):
-            await self.generate_packages(requirement, created_version.get("id"), package_name)
+            await self.generate_packages(requirement, created_version.get("id", ""), package_name)

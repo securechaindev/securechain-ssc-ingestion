@@ -109,7 +109,7 @@ def redis_queue_processor(
         async def _process_messages():
             nonlocal total_processed, successful, failed, validation_errors, unsupported_types
 
-            messages = redis_queue.read_batch(count=100, block_ms=1000)
+            messages = await redis_queue.read_batch(count=100, block_ms=1000)
 
             if not messages:
                 logger.info("No messages in Redis queue")

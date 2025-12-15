@@ -21,7 +21,7 @@ class PyPIVersionUpdater:
         self.attributor = attributor
 
     async def update_package_versions(self, package: dict[str, Any]) -> None:
-        package_name = package.get("name")
+        package_name = package.get("name", "")
 
         metadata = await self.pypi_service.fetch_package_metadata(package_name)
         versions = await self.pypi_service.get_versions(metadata)
@@ -35,7 +35,7 @@ class PyPIVersionUpdater:
             actual_versions = await self.version_service.read_versions_names_by_package("PyPIPackage", package_name)
 
             for index, version in enumerate(versions):
-                if version.get("name") not in actual_versions:
+                if version.get("name", "") not in actual_versions:
                     new_attributed_versions.append(
                         await self.attributor.attribute_vulnerabilities(package_name, version)
                     )
@@ -50,14 +50,14 @@ class PyPIVersionUpdater:
             await self.version_service.update_versions_serial_number("PyPIPackage", package_name, versions)
 
             for version in created_versions:
-                package = PyPIPackageSchema(
+                package_schema = PyPIPackageSchema(
                     name=package_name,
                     vendor=vendor or "n/a",
                     repository_url=repository_url or "n/a",
                     moment=datetime.now(),
                 )
                 extractor = PyPIPackageExtractor(
-                    package=package,
+                    package=package_schema,
                     package_service=self.package_service,
                     version_service=self.version_service,
                     pypi_service=self.pypi_service,

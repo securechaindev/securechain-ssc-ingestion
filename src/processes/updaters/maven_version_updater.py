@@ -21,7 +21,7 @@ class MavenVersionUpdater:
         self.attributor = attributor
 
     async def update_package_versions(self, package: dict[str, Any]) -> None:
-        package_name = package.get("name")
+        package_name = package.get("name", "")
 
         if ":" not in package_name:
             return
@@ -40,7 +40,7 @@ class MavenVersionUpdater:
             actual_versions = await self.version_service.read_versions_names_by_package("MavenPackage", package_name)
 
             for index, version in enumerate(versions):
-                if version.get("name") not in actual_versions:
+                if version.get("name", "") not in actual_versions:
                     new_attributed_versions.append(
                         await self.attributor.attribute_vulnerabilities(package_name, version)
                     )

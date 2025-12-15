@@ -55,7 +55,7 @@ class PyPIService:
             logger.error(f"PyPI - Unexpected error fetching package names: {e}")
             return []
 
-    async def fetch_package_metadata(self, package_name: str) -> dict[str, Any] | None:
+    async def fetch_package_metadata(self, package_name: str) -> dict[str, Any]:
         cached = await self.cache.get_cache(package_name)
         if cached:
             return cached
@@ -73,10 +73,10 @@ class PyPIService:
             except (ClientConnectorError, TimeoutError):
                 await sleep(5)
             except (JSONDecodeError, ContentTypeError):
-                return None
-        return None
+                return {}
+        return {}
 
-    async def fetch_package_version_metadata(self, package_name: str, version_name: str) -> dict[str, Any] | None:
+    async def fetch_package_version_metadata(self, package_name: str, version_name: str) -> dict[str, Any]:
         cache_key = f"{package_name}:{version_name}"
         cached = await self.cache.get_cache(cache_key)
         if cached:
@@ -95,8 +95,8 @@ class PyPIService:
             except (ClientConnectorError, TimeoutError):
                 await sleep(5)
             except (JSONDecodeError, ContentTypeError):
-                return None
-        return None
+                return {}
+        return {}
 
     def extract_raw_versions(self, metadata: dict[str, Any]) -> list[dict[str, Any]]:
         raw_versions = []

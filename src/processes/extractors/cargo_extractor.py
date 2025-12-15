@@ -105,7 +105,7 @@ class CargoPackageExtractor(PackageExtractor):
         await self.package_service.update_package_moment("CargoPackage", package_name)
 
     async def extract_packages(self, parent_package_name: str, version: dict[str, Any]) -> None:
-        metadata = await self.cargo_service.fetch_package_version_metadata(parent_package_name, version.get("name"))
+        metadata = await self.cargo_service.fetch_package_version_metadata(parent_package_name, version.get("name", ""))
         requirement = self.cargo_service.get_package_requirements(metadata)
         if requirement:
-            await self.generate_packages(requirement, version.get("id"), parent_package_name)
+            await self.generate_packages(requirement, version.get("id", ""), parent_package_name)

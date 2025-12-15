@@ -77,7 +77,7 @@ class NPMService:
             logger.error(f"NPM - Error fetching package names: {e}")
             return []
 
-    async def fetch_package_metadata(self, package_name: str) -> dict[str, Any] | None:
+    async def fetch_package_metadata(self, package_name: str) -> dict[str, Any]:
         cached = await self.cache.get_cache(package_name)
         if cached:
             return cached
@@ -90,15 +90,15 @@ class NPMService:
             try:
                 async with session.get(url) as resp:
                     if resp.status == 404:
-                        return None
+                        return {}
                     response = await resp.json()
                     await self.cache.set_cache(package_name, response, ttl=600)
                     return response
             except (ClientConnectorError, TimeoutError):
                 await sleep(5)
             except (JSONDecodeError, ContentTypeError):
-                return None
-        return None
+                return {}
+        return {}
 
     def extract_raw_versions_and_requirements(self, metadata: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
         raw_versions = []

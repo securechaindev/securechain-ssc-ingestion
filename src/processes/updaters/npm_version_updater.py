@@ -21,7 +21,7 @@ class NPMVersionUpdater:
         self.attributor = attributor
 
     async def update_package_versions(self, package: dict[str, Any]) -> None:
-        package_name = package.get("name")
+        package_name = package.get("name", "")
 
         metadata = await self.npm_service.fetch_package_metadata(package_name)
         versions, requirements = await self.npm_service.get_versions_and_requirements(metadata)
@@ -35,7 +35,7 @@ class NPMVersionUpdater:
             actual_versions = await self.version_service.read_versions_names_by_package("NPMPackage", package_name)
 
             for index, (version, requirement) in enumerate(zip(versions, requirements, strict=False)):
-                if version.get("name") not in actual_versions:
+                if version.get("name", "") not in actual_versions:
                     new_attributed_versions.append(
                         await self.attributor.attribute_vulnerabilities(package_name, version)
                     )
@@ -69,6 +69,6 @@ class NPMVersionUpdater:
                     attributor=self.attributor,
                 )
                 if requirement:
-                    await extractor.generate_packages(requirement, version.get("id"), package_name)
+                    await extractor.generate_packages(requirement, version.get("id", ""), package_name)
 
         await self.package_service.update_package_moment("NPMPackage", package_name)

@@ -118,7 +118,7 @@ class MavenPackageExtractor(PackageExtractor):
             return
 
         group_id, artifact_id = parent_package_name.split(":", 1)
-        metadata = await self.maven_service.fetch_package_version_metadata(group_id, artifact_id, version.get("name"))
+        metadata = await self.maven_service.fetch_package_version_metadata(group_id, artifact_id, version.get("name", ""))
         requirement = self.maven_service.get_package_requirements(metadata)
         if requirement:
-            await self.generate_packages(requirement, version.get("id"), parent_package_name)
+            await self.generate_packages(requirement, version.get("id", ""), parent_package_name)

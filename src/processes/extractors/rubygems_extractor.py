@@ -105,7 +105,7 @@ class RubyGemsPackageExtractor(PackageExtractor):
         await self.package_service.update_package_moment("RubyGemsPackage", package_name)
 
     async def extract_packages(self, parent_package_name: str, version: dict[str, Any]) -> None:
-        metadata = await self.rubygems_service.fetch_package_version_metadata(parent_package_name, version.get("name"))
+        metadata = await self.rubygems_service.fetch_package_version_metadata(parent_package_name, version.get("name", ""))
         requirement = self.rubygems_service.get_package_requirements(metadata)
         if requirement:
-            await self.generate_packages(requirement, version.get("id"), parent_package_name)
+            await self.generate_packages(requirement, version.get("id", ""), parent_package_name)
