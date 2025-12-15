@@ -5,11 +5,12 @@ from tarfile import open as open_tarfile
 from typing import Any
 from zipfile import ZipFile
 
-from aiohttp import ClientConnectorError, ClientTimeout, ContentTypeError
+from aiohttp import ClientConnectorError, ContentTypeError
 from regex import findall
 
 from src.dependencies import (
     get_cache_manager,
+    get_default_timeout,
     get_orderer,
     get_pypi_constraints_parser,
     get_repo_normalizer,
@@ -197,7 +198,7 @@ class PyPIService:
 
             session_manager = get_session_manager()
             session = await session_manager.get_session()
-            async with session.get(download_url, timeout=ClientTimeout(total=30)) as resp:
+            async with session.get(download_url, timeout=get_default_timeout()) as resp:
                 if resp.status != 200:
                     logger.warning(f"PyPI - No se pudo descargar {package_name}@{version}: HTTP {resp.status}")
                     return []

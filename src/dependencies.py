@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import ClassVar
 
+from aiohttp import ClientTimeout
+
 from src.cache import CacheManager
 from src.database import DatabaseManager
 from src.services import (
@@ -16,6 +18,7 @@ from src.services import (
     VulnerabilityService,
 )
 from src.session import SessionManager
+from src.settings import settings
 from src.utils import (
     Attributor,
     Orderer,
@@ -44,6 +47,9 @@ class ServiceContainer:
     pypi_constraints_parser: PyPIConstraintsParser | None = None
     cache_managers: ClassVar[dict[str, CacheManager]] = {}
     orderers: ClassVar[dict[str, Orderer]] = {}
+    default_timeout: ClientTimeout | None = None
+    medium_timeout: ClientTimeout | None = None
+    long_timeout: ClientTimeout | None = None
 
     def __new__(cls) -> ServiceContainer:
         if cls.instance is None:
@@ -135,6 +141,22 @@ class ServiceContainer:
             self.redis_queue = RedisQueue.from_env()
         return self.redis_queue
 
+    def get_default_timeout(self) -> ClientTimeout:
+        if self.default_timeout is None:
+            self.default_timeout = ClientTimeout(total=settings.HTTP_TIMEOUT_DEFAULT)
+        return self.default_timeout
+
+    def get_medium_timeout(self) -> ClientTimeout:
+        if self.medium_timeout is None:
+            self.medium_timeout = ClientTimeout(total=settings.HTTP_TIMEOUT_MEDIUM)
+        return self.medium_timeout
+
+    def get_long_timeout(self) -> ClientTimeout:
+        if self.long_timeout is None:
+            self.long_timeout = ClientTimeout(total=settings.HTTP_TIMEOUT_LONG)
+        return self.long_timeout
+
+
 def get_db() -> DatabaseManager:
     return ServiceContainer().get_db()
 
@@ -201,3 +223,15 @@ def get_vulnerability_service() -> VulnerabilityService:
 
 def get_redis_queue() -> RedisQueue:
     return ServiceContainer().get_redis_queue()
+
+
+def get_default_timeout() -> ClientTimeout:
+    return ServiceContainer().get_default_timeout()
+
+
+def get_medium_timeout() -> ClientTimeout:
+    return ServiceContainer().get_medium_timeout()
+
+
+def get_long_timeout() -> ClientTimeout:
+    return ServiceContainer().get_long_timeout()

@@ -5,10 +5,12 @@ from tarfile import TarError
 from tarfile import open as open_tarfile
 from typing import Any
 
-from aiohttp import ClientConnectorError, ClientTimeout, ContentTypeError
+from aiohttp import ClientConnectorError, ContentTypeError
 
 from src.dependencies import (
     get_cache_manager,
+    get_default_timeout,
+    get_long_timeout,
     get_orderer,
     get_repo_normalizer,
     get_session_manager,
@@ -35,7 +37,7 @@ class RubyGemsService:
         session = await session_manager.get_session()
 
         try:
-            async with session.get(self.GEMS_NAMES_URL, timeout=ClientTimeout(total=120)) as resp:
+            async with session.get(self.GEMS_NAMES_URL, timeout=get_long_timeout()) as resp:
                 if resp.status != 200:
                     logger.error(f"RubyGems - Failed to fetch gem list: status {resp.status}")
                     return []
@@ -161,7 +163,7 @@ class RubyGemsService:
             session_manager = get_session_manager()
             session = await session_manager.get_session()
 
-            async with session.get(url, timeout=ClientTimeout(total=30)) as resp:
+            async with session.get(url, timeout=get_default_timeout()) as resp:
                 if resp.status != 200:
                     logger.warning(f"RubyGems - No se pudo descargar {gem_name}@{version}: HTTP {resp.status}")
                     return []

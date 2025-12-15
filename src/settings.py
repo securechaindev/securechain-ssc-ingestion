@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     DB_API_KEY_COLLECTION: str = "api_keys"
     DB_VULNERABILITIES_COLLECTION: str = "vulnerabilities"
 
+    # HTTP Client Timeouts (seconds)
+    HTTP_TIMEOUT_DEFAULT: int = Field(30, alias="HTTP_TIMEOUT_DEFAULT")
+    HTTP_TIMEOUT_MEDIUM: int = Field(60, alias="HTTP_TIMEOUT_MEDIUM")
+    HTTP_TIMEOUT_LONG: int = Field(120, alias="HTTP_TIMEOUT_LONG")
+
 
 @lru_cache
 def get_settings() -> Settings:

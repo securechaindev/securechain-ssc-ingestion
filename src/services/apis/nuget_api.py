@@ -9,6 +9,9 @@ from regex import search
 
 from src.dependencies import (
     get_cache_manager,
+    get_default_timeout,
+    get_long_timeout,
+    get_medium_timeout,
     get_orderer,
     get_repo_normalizer,
     get_session_manager,
@@ -37,7 +40,7 @@ class NuGetService:
         try:
             logger.info("NuGet - Fetching all packages using catalog")
 
-            async with session.get(self.INDEX_URL, timeout=60) as resp:
+            async with session.get(self.INDEX_URL, timeout=get_medium_timeout()) as resp:
                 if resp.status != 200:
                     logger.error(f"NuGet - Error fetching catalog index: HTTP {resp.status}")
                     return []
@@ -56,7 +59,7 @@ class NuGetService:
 
                 async with semaphore:
                     try:
-                        async with session.get(page_url, timeout=120) as resp:
+                        async with session.get(page_url, timeout=get_long_timeout()) as resp:
                             if resp.status != 200:
                                 return
 
@@ -208,7 +211,7 @@ class NuGetService:
             session_manager = get_session_manager()
             session = await session_manager.get_session()
 
-            async with session.get(url, timeout=30) as resp:
+            async with session.get(url, timeout=get_default_timeout()) as resp:
                 if resp.status != 200:
                     logger.warning(f"NuGet - No se pudo descargar {package_name}@{version}: HTTP {resp.status}")
                     return []
