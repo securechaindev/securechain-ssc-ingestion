@@ -223,7 +223,7 @@ class PyPIService:
             logger.error(f"PyPI - Error extrayendo import_names de {package_name}@{version}: {e}")
             return []
 
-    def extract_from_package(self, package_bytes: bytes, file_type: str, package_name: str) -> list[str]:
+    def extract_from_package(self, package_bytes: bytes, file_type: str | None, package_name: str) -> list[str]:
         import_names = set()
 
         try:
