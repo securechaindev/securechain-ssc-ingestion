@@ -37,7 +37,7 @@ class VersionService:
             record = await result.single()
         return record["versions"] if record else []
 
-    async def read_versions_names_by_package(self, node_type: str, package_name: str) -> list[str]:
+    async def read_versions_names_by_package(self, node_type: str, package_name: str) -> list[str] | None:
         query = f"""
         MATCH (p:{node_type}{{name:$package_name}})
         MATCH (p)-[:HAVE]->(v)
