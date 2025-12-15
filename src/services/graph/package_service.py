@@ -18,6 +18,7 @@ class PackageService:
         parent_id: str | None = None,
         parent_version_name: str | None = None,
     ) -> list[dict[str, str]]:
+        # TODO: Add dynamic labels where Neo4j supports it with indexes
         parent_match = ""
         parent_rel = ""
         if parent_id:
@@ -53,7 +54,7 @@ class PackageService:
         """
         async with self.driver.session() as session:
             result = await session.run(
-                query,
+                query, # type: ignore
                 package,
                 constraints=constraints,
                 parent_id=parent_id,
@@ -64,13 +65,14 @@ class PackageService:
         return record["versions"] if record else []
 
     async def read_package_by_name(self, node_type: str, package_name: str) -> dict[str, Any]:
+        # TODO: Add dynamic labels where Neo4j supports it with indexes
         query = f"""
         MATCH(p:{node_type}{{name:$package_name}})
         RETURN p{{id: elementid(p), .*}} AS package
         """
         async with self.driver.session() as session:
             result = await session.run(
-                query,
+                query, # type: ignore
                 package_name=package_name
             )
             record = await result.single()
@@ -83,13 +85,14 @@ class PackageService:
     ) -> AsyncGenerator[list[dict]]:
         skip = 0
         while True:
+            # TODO: Add dynamic labels where Neo4j supports it with indexes
             query = f"""
             MATCH (p:{node_type})
             RETURN p.name AS name, p.moment AS moment
             SKIP $skip LIMIT $limit
             """
             async with self.driver.session() as session:
-                result = await session.run(query, skip=skip, limit=batch_size)
+                result = await session.run(query, skip=skip, limit=batch_size) # type: ignore
                 records = [record async for record in result]
                 if not records:
                     break
@@ -97,6 +100,7 @@ class PackageService:
             skip += batch_size
 
     async def relate_packages(self, node_type: str, packages: list[dict[str, Any]]) -> None:
+        # TODO: Add dynamic labels where Neo4j supports it with indexes
         query = f"""
         UNWIND $packages AS package
         MATCH (parent:RequirementFile|Version)
@@ -106,12 +110,13 @@ class PackageService:
         CREATE (parent)-[:REQUIRE{{constraints: package.constraints, parent_version_name: package.parent_version_name}}]->(p)
         """
         async with self.driver.session() as session:
-            await session.run(query, packages=packages)
+            await session.run(query, packages=packages) # type: ignore
 
     async def update_package_moment(self, node_type: str, package_name: str) -> None:
+        # TODO: Add dynamic labels where Neo4j supports it with indexes
         query = f"""
         MATCH(p:{node_type}{{name:$package_name}})
         SET p.moment = $moment
         """
         async with self.driver.session() as session:
-            await session.run(query, package_name=package_name, moment=datetime.now())
+            await session.run(query, package_name=package_name, moment=datetime.now()) # type: ignore

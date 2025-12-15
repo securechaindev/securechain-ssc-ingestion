@@ -13,6 +13,7 @@ class VersionService:
         package_name: str,
         versions: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
+        # TODO: Add dynamic labels where Neo4j supports it with indexes
         query = f"""
         MATCH(p:{node_type}{{name:$package_name}})
         WITH p AS package
@@ -30,7 +31,7 @@ class VersionService:
         """
         async with self.driver.session() as session:
             result = await session.run(
-                query,
+                query, # type: ignore
                 package_name=package_name,
                 versions=versions,
             )
@@ -38,13 +39,14 @@ class VersionService:
         return record["versions"] if record else []
 
     async def read_versions_names_by_package(self, node_type: str, package_name: str) -> list[str] | None:
+        # TODO: Add dynamic labels where Neo4j supports it with indexes
         query = f"""
         MATCH (p:{node_type}{{name:$package_name}})
         MATCH (p)-[:HAVE]->(v)
         RETURN collect(v.name) AS version_names
         """
         async with self.driver.session() as session:
-            result = await session.run(query, package_name=package_name)
+            result = await session.run(query, package_name=package_name) # type: ignore
             record = await result.single()
         return record["version_names"] if record else None
 
@@ -54,6 +56,7 @@ class VersionService:
         package_name: str,
         versions: list[dict[str, Any]],
     ) -> None:
+        # TODO: Add dynamic labels where Neo4j supports it with indexes
         query = f"""
         MATCH (p:{node_type}{{name: $package_name}})-[:HAVE]->(v)
         WITH v, $versions AS input_versions
@@ -64,18 +67,19 @@ class VersionService:
         """
         async with self.driver.session() as session:
             await session.run(
-                query,
+                query, # type: ignore
                 package_name=package_name,
                 versions=versions,
             )
 
     async def count_number_of_versions_by_package(self, node_type: str, package_name: str) -> int:
+        # TODO: Add dynamic labels where Neo4j supports it with indexes
         query = f"""
         MATCH (p:{node_type}{{name:$package_name}})
         MATCH (p)-[r:HAVE]->(v: Version)
         RETURN count(v) AS version_count
         """
         async with self.driver.session() as session:
-            result = await session.run(query, package_name=package_name)
+            result = await session.run(query, package_name=package_name) # type: ignore
             record = await result.single()
         return record["version_count"] if record else 0
