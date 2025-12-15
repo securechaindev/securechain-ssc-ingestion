@@ -30,9 +30,8 @@ def maven_package_ingestion(
         maven_svc = get_maven_service()
 
         async def _run():
-            # Initialize database connection
             await get_db().initialize()
-            
+
             package_svc = get_package_service()
             version_svc = get_version_service()
             attr = get_attributor()
@@ -139,9 +138,8 @@ def maven_packages_updates(
         maven_svc = get_maven_service()
 
         async def _run():
-            # Initialize database connection
             await get_db().initialize()
-            
+
             package_svc = get_package_service()
             version_svc = get_version_service()
             attr = get_attributor()

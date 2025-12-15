@@ -68,11 +68,9 @@ def redis_queue_processor(
         async def _process_messages():
             nonlocal total_processed, successful, failed, validation_errors, unsupported_types
 
-            # Initialize database connection
             db = get_db()
             await db.initialize()
 
-            # Get DB-dependent services after initialization
             package_svc = get_package_service()
             version_svc = get_version_service()
             attr = get_attributor()

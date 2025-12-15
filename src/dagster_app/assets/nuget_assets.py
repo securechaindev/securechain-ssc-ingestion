@@ -30,9 +30,8 @@ def nuget_package_ingestion(
         nuget_svc = get_nuget_service()
 
         async def _run():
-            # Initialize database connection
             await get_db().initialize()
-            
+
             package_svc = get_package_service()
             version_svc = get_version_service()
             attr = get_attributor()
@@ -126,9 +125,8 @@ def nuget_packages_updates(
         nuget_svc = get_nuget_service()
 
         async def _run():
-            # Initialize database connection
             await get_db().initialize()
-            
+
             package_svc = get_package_service()
             version_svc = get_version_service()
             attr = get_attributor()

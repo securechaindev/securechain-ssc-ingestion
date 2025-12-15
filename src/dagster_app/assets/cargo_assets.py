@@ -30,9 +30,8 @@ def cargo_package_ingestion(
         cargo_svc = get_cargo_service()
 
         async def _run():
-            # Initialize database connection
             await get_db().initialize()
-            
+
             package_svc = get_package_service()
             version_svc = get_version_service()
             attr = get_attributor()
@@ -126,9 +125,8 @@ def cargo_packages_updates(
         cargo_svc = get_cargo_service()
 
         async def _run():
-            # Initialize database connection
             await get_db().initialize()
-            
+
             package_svc = get_package_service()
             version_svc = get_version_service()
             attr = get_attributor()

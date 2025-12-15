@@ -30,9 +30,8 @@ def rubygems_package_ingestion(
         rubygems_svc = get_rubygems_service()
 
         async def _run():
-            # Initialize database connection
             await get_db().initialize()
-            
+
             package_svc = get_package_service()
             version_svc = get_version_service()
             attr = get_attributor()
@@ -126,9 +125,8 @@ def rubygems_packages_updates(
         rubygems_svc = get_rubygems_service()
 
         async def _run():
-            # Initialize database connection
             await get_db().initialize()
-            
+
             package_svc = get_package_service()
             version_svc = get_version_service()
             attr = get_attributor()
