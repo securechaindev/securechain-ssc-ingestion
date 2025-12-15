@@ -1,6 +1,6 @@
 services:
   dagster-postgres:
-    image: postgres:18
+    image: postgres:17
     container_name: dagster-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-dagster}
