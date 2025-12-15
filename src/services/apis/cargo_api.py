@@ -234,9 +234,10 @@ class CargoService:
 
                 for member in rs_files:
                     try:
-                        file_data = tar.extractfile(member).read().decode("utf-8", errors="replace")
-
-                        import_names.update(self.extract_public_items(crate_name, file_data))
+                        file_extracted = tar.extractfile(member)
+                        if file_extracted is not None:
+                            file_data = file_extracted.read().decode("utf-8", errors="replace")
+                            import_names.update(self.extract_public_items(crate_name, file_data))
 
                     except UnicodeDecodeError:
                         logger.warning(f"Cargo - Unicode decode error in {member.name}")
