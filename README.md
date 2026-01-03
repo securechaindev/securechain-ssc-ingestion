@@ -792,7 +792,7 @@ Contributions are welcome! Please ensure:
 - **Dagster Documentation**: https://docs.dagster.io/
 - **Redis Streams**: https://redis.io/docs/data-types/streams/
 - **Project Repository**: https://github.com/securechaindev/securechain-ssc-ingestion
-- **Data Dumps**: https://doi.org/10.5281/zenodo.17131401
+- **Data Dumps**: https://doi.org/10.5281/zenodo.16739080
 
 ## License
 
