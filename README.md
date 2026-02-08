@@ -82,7 +82,7 @@ The containerized databases will be seeded automatically.
 
 ```bash
 # 1. Configure environment
-cp template.env .env
+cp .env .env.template
 nano .env  # Update passwords and connection strings
 
 # 2. Start all services (Dagster + Redis)
@@ -511,7 +511,7 @@ securechain-ssc-ingestion/
 ├── docker-compose.yml     # 4 services (postgres, redis, daemon, webserver)
 ├── Dockerfile             # Multi-stage build with UV
 ├── pyproject.toml         # Project configuration and dependencies
-├── template.env           # Environment variable template
+├── .env.template           # Environment variable template
 ├── .env                   # Local configuration (gitignored)
 └── CLAUDE.md              # AI agent context documentation
 ```
@@ -520,7 +520,7 @@ securechain-ssc-ingestion/
 
 ### Environment Variables
 
-Copy `template.env` to `.env` and configure the following sections:
+Copy `.env.template` to `.env` and configure the following sections:
 
 #### Database Connections
 ```bash
