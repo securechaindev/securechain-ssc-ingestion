@@ -1,4 +1,8 @@
-# SecureChain SSC Ingestion
+# Secure Chain SSC Ingestion
+
+[![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![Lint & Test](https://github.com/securechaindev/securechain-ssc-ingestion/actions/workflows/lint-test.yml/badge.svg)]()
+[![GHCR](https://img.shields.io/badge/GHCR-securechain--ssc--ingestion-blue?logo=docker)](https://github.com/orgs/securechaindev/packages/container/package/securechain-ssc-ingestion)
 
 Data pipeline for ingesting and updating software packages from multiple ecosystems into SecureChain.
 
@@ -777,23 +781,12 @@ The `redis_queue_processor` will pick up the message in the next run (every 5 mi
 
 ## Contributing
 
-Contributions are welcome! Please ensure:
-
-- Code follows existing patterns and structure
-- Assets return proper `Output` with metadata
-- Business logic stays in `src/processes/`, not in assets
-- Type hints are used throughout
-- Documentation is updated (README.md + CLAUDE.md)
-- Redis messages conform to `PackageMessageSchema`
-
-## Additional Resources
-
-- **CLAUDE.md**: Comprehensive AI agent context with detailed architecture and implementation notes
-- **Dagster Documentation**: https://docs.dagster.io/
-- **Redis Streams**: https://redis.io/docs/data-types/streams/
-- **Project Repository**: https://github.com/securechaindev/securechain-ssc-ingestion
-- **Data Dumps**: https://doi.org/10.5281/zenodo.16739080
+Pull requests are welcome! To contribute follow this [guidelines](https://securechaindev.github.io/contributing.html).
 
 ## License
+[GNU General Public License 3.0](https://www.gnu.org/licenses/gpl-3.0.html)
 
-See LICENSE file for details.
+## Links
+- [Secure Chain Team](mailto:hi@securechain.dev)
+- [Secure Chain Organization](https://github.com/securechaindev)
+- [Secure Chain Documentation](https://securechaindev.github.io/)
